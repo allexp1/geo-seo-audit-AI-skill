@@ -1,0 +1,22 @@
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What is the question?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Self-contained answer in 100-200 words. Lead with the direct answer, then supporting facts. Avoid pronouns referring to the question."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Another common question?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Concrete answer with numbers, dates, or named entities where possible — those are the passages AI assistants quote."
+      }
+    }
+  ]
+}
