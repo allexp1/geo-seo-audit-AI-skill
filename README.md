@@ -37,7 +37,12 @@ cd geo-seo-audit
 ./install.sh
 ```
 
-This copies `SKILL.md`, `scripts/`, and `schema/` into `~/.claude/skills/geo/`. Nothing else is touched.
+This installs two skills:
+
+- `~/.claude/skills/geo/` — this skill (SKILL.md + scripts/ + schema/)
+- `~/.claude/skills/business-idea-validator/` — companion skill from [business-idea-validator-AI-skill](https://github.com/allexp1/business-idea-validator-AI-skill), cloned and installed automatically
+
+After restart you'll have both `/geo` and `/business-idea-validator` available.
 
 ### 3. Install Python dependencies
 
@@ -211,6 +216,7 @@ Two independent scores plus a composite (their average).
 
 ```bash
 rm -rf ~/.claude/skills/geo
+rm -rf ~/.claude/skills/business-idea-validator   # if you no longer want the companion
 ```
 
 That's it. Nothing else was created.
