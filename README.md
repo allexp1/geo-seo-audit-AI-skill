@@ -19,6 +19,9 @@ A Claude Code skill that audits any website for **SEO** (traditional search) and
 | `/geo keywords <url>` | Extract keywords + check Google rankings |
 | `/geo readability <url>` | Flesch-Kincaid, Gunning Fog, AI citation readability |
 | `/geo performance <url>` | Lighthouse score + Core Web Vitals via PageSpeed Insights |
+| `/geo ai-citations <url>` | Query ChatGPT / Claude / Perplexity / Gemini with commercial prompts; measure brand mention rate, sentiment, competitor gap. Delta-compare across runs |
+
+Plus a library of deep-dive methodology guides under `references/` covering AI-visibility testing, `llms.txt`, local SEO, knowledge graph / Wikidata, programmatic SEO, topical authority, keyword research, content decay, SERP features, link building, E-E-A-T, SPA/JS rendering, and 20+ JSON-LD schema templates.
 
 ---
 
@@ -37,7 +40,7 @@ cd geo-seo-audit
 ./install.sh
 ```
 
-This copies `SKILL.md`, `scripts/`, and `schema/` into `~/.claude/skills/geo/`. Nothing else is touched.
+This copies `SKILL.md`, `scripts/`, `schema/`, and `references/` into `~/.claude/skills/geo/`. Nothing else is touched.
 
 ### 3. Install Python dependencies
 

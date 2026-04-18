@@ -30,6 +30,7 @@ Audits a website for AI-search visibility plus the traditional SEO signals that 
 | `readability` | Flesch-Kincaid, Gunning Fog, AI citation readability |
 | `performance` | Google Lighthouse score + Core Web Vitals via PageSpeed Insights |
 | `pdf` | Generate a professional PDF audit report with score gauges, competitive analysis, strategic roadmap, and 90-day timeline. Accepts `--keywords kw1,kw2,...` for custom keyword targeting |
+| `ai-citations` | Query ChatGPT / Claude / Perplexity / Gemini with a list of commercial prompts and measure how often the brand is cited. Delta-compares across runs. See `references/ai-visibility-testing.md` |
 
 ## How to run
 
@@ -49,6 +50,16 @@ python3 scripts/readability.py <url>
 python3 scripts/performance.py <url> [mobile|desktop]
 python3 scripts/report.py <url>     # runs all of the above and emits markdown
 python3 scripts/generate_pdf.py <url> [output.pdf] [--keywords kw1,kw2,kw3]
+
+# AI-visibility measurement (Node.js; queries ChatGPT/Claude/Perplexity/Gemini)
+node scripts/ai-citation-test.mjs \
+  --brand="BrandName" \
+  --domain="example.com" \
+  --competitors="Comp1,Comp2,Comp3" \
+  --prompts=prompts.txt
+
+# Render an HTML audit brief to PDF via headless Chrome
+scripts/render-audit-pdf.sh audit.html audit.pdf
 ```
 
 ## PDF generation
@@ -73,6 +84,10 @@ python3 scripts/generate_pdf.py https://example.com report.pdf --keywords "whole
 | `SERPAPI_KEY` | Real Google rankings (free 100/month at serpapi.com) |
 | `GOOGLE_CSE_KEY` + `GOOGLE_CSE_CX` | Google Custom Search API (free 100/day) |
 | `PAGESPEED_API_KEY` | Higher PageSpeed Insights rate limits |
+| `OPENAI_API_KEY` | For `ai-citations` subcommand — ChatGPT queries |
+| `ANTHROPIC_API_KEY` | For `ai-citations` subcommand — Claude queries |
+| `PERPLEXITY_API_KEY` | For `ai-citations` subcommand — Perplexity queries |
+| `GEMINI_API_KEY` | For `ai-citations` subcommand — Gemini queries |
 
 ## Workflow
 
@@ -92,5 +107,26 @@ If `schema_extract.py` reports missing common types (Organization, LocalBusiness
 
 ## What this skill does not do
 
-- No CRM/prospect tracking. No proposal generation. No PDF reports. Add separately if you want them.
+- No CRM/prospect tracking. No proposal generation.
 - No data is written outside this skill directory. Scripts only read.
+
+## References — deep-dive documentation
+
+For topics beyond what the Python audit scripts cover, consult the `references/` directory. These are methodology guides Claude should read when the user asks about the specific topic:
+
+| File | When to read |
+|------|--------------|
+| `references/ai-visibility-testing.md` | User asks about AI citations, AEO measurement, or `ai-citations` subcommand |
+| `references/llms-txt-guide.md` | User asks about `llms.txt`, `ai.txt`, AI crawler directives |
+| `references/local-seo.md` | User's site has a physical location, service area, or GBP |
+| `references/knowledge-graph.md` | User asks about Wikipedia, Wikidata, knowledge panel, entity optimization |
+| `references/programmatic-seo.md` | User has directory/marketplace/listing content, thousands of similar pages |
+| `references/topical-authority.md` | User asks about content clusters, pillar pages, internal linking |
+| `references/keyword-research.md` | User asks about keyword strategy, intent classification, 2026 methodology |
+| `references/content-decay.md` | User's content is losing rankings; refresh / prune strategy |
+| `references/serp-features.md` | User asks about AI Overviews, featured snippets, PAA, image pack, review stars |
+| `references/link-building.md` | User asks about backlinks, digital PR, HARO, authority |
+| `references/eeat-implementation.md` | User asks about E-E-A-T, author bylines, YMYL content |
+| `references/spa-js-rendering.md` | User has React/Next.js/Vue/SPA; SSR vs SSG vs ISR vs CSR |
+| `references/json-ld-templates.md` | Deep JSON-LD reference; 20+ schema types. Complements `schema/*.json` |
+| `references/pdf-template.html` | HTML template for PDF audit briefs (for `render-audit-pdf.sh`) |

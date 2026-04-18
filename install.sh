@@ -14,6 +14,7 @@ mkdir -p "${DEST}"
 cp "${SRC}/SKILL.md" "${DEST}/SKILL.md"
 cp -R "${SRC}/scripts" "${DEST}/scripts"
 cp -R "${SRC}/schema" "${DEST}/schema"
+cp -R "${SRC}/references" "${DEST}/references"
 
 if ! python3 -c "import requests, bs4" 2>/dev/null; then
   echo

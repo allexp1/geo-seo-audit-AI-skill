@@ -1,0 +1,218 @@
+<!doctype html>
+<!--
+  SEO / GEO AUDIT — PDF BRIEF TEMPLATE
+  ============================================================
+  Visual blueprint for every audit PDF. Keep CSS untouched.
+  Replace content between the marked <!-- CONTENT: ... --> boundaries.
+
+  REQUIRED sections (in order):
+    1.  Cover                (subject, date, scope)
+    2.  Stat row             (4 headline numbers: Lighthouse SEO, CWV pass rate, indexed pages, AI visibility %)
+    3.  Verdict              (Strong / Promising / Weak / Flawed + 2-3 sentences)
+    4.  What's Working       (2x2 grid of green cards)
+    5.  Critical Fixes       (stacked red cards, prioritized 1..N)
+    6.  AI Visibility Scorecard  (table: provider × prompt × mentioned)
+    7.  Competitor benchmark (table: competitor × their citation rate × your gap)
+    8.  Schema / Structured Data audit (table: page type × schema present × valid?)
+    9.  Local / Programmatic / Knowledge Graph findings (if applicable)
+   10.  Top-10 Prioritized Fixes  (table: fix × effort × impact × owner)
+   11.  Verified Facts footer (✓ / ⚠ / ? cross-checks)
+   12.  One-sentence summary
+   13.  Sources
+
+  VERDICT COLORS (swap --accent / --accent-soft in :root):
+    Strong    → #1c7a44 / #e8f5ee (green)
+    Promising → #1f4fd6 / #eef2ff (blue, default)
+    Weak      → #7a2fd6 / #f4eefe (purple)
+    Flawed    → #b23a1f / #fbece8 (red)
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>{{SUBJECT}} — SEO / GEO Audit</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  :root {
+    --ink: #111418; --muted: #55606b; --line: #e4e8ec;
+    --accent: #1f4fd6; --accent-soft: #eef2ff;
+    --warn: #b23a1f; --ok: #1c7a44; --caution: #b88208;
+  }
+  * { box-sizing: border-box; } html, body { margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", Arial, sans-serif; color: var(--ink); font-size: 10.5pt; line-height: 1.55; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .cover { padding: 10mm 0 8mm; border-bottom: 1px solid var(--line); margin-bottom: 8mm; }
+  .eyebrow { font-size: 8.5pt; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  h1 { font-size: 26pt; line-height: 1.15; margin: 4mm 0 2mm; letter-spacing: -0.01em; }
+  .subtitle { font-size: 11.5pt; color: var(--muted); max-width: 150mm; }
+  .meta { display: flex; gap: 8mm; flex-wrap: wrap; margin-top: 6mm; font-size: 9pt; color: var(--muted); }
+  .meta span strong { color: var(--ink); }
+  h2 { font-size: 14pt; margin: 9mm 0 3mm; padding-bottom: 2mm; border-bottom: 1px solid var(--line); letter-spacing: -0.005em; }
+  h3 { font-size: 11.2pt; margin: 5mm 0 1.5mm; color: var(--ink); }
+  p { margin: 0 0 2.5mm; } ul, ol { margin: 0 0 3mm; padding-left: 5mm; } li { margin-bottom: 1.5mm; }
+  strong { color: var(--ink); } em { color: var(--muted); }
+  .verdict { background: var(--accent-soft); border-left: 3px solid var(--accent); padding: 5mm 6mm; border-radius: 2px; margin-bottom: 4mm; }
+  .verdict .tag { display: inline-block; background: var(--accent); color: #fff; font-size: 8pt; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 1.5mm 3mm; border-radius: 3px; margin-bottom: 2.5mm; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; margin: 2mm 0 4mm; }
+  .card { border: 1px solid var(--line); border-radius: 3px; padding: 4mm 5mm; break-inside: avoid; }
+  .card h3 { margin-top: 0; }
+  .card.good { border-left: 3px solid var(--ok); } .card.risk { border-left: 3px solid var(--warn); }
+  .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4mm; margin: 2mm 0 5mm; }
+  .stat { border: 1px solid var(--line); border-radius: 3px; padding: 3mm 4mm; }
+  .stat .label { font-size: 8pt; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .stat .value { font-size: 13pt; font-weight: 700; margin-top: 1mm; letter-spacing: -0.005em; }
+  .stat .note { font-size: 8pt; color: var(--muted); margin-top: 1mm; font-style: italic; }
+  table { width: 100%; border-collapse: collapse; margin: 2mm 0 4mm; font-size: 9.5pt; }
+  table thead th { font-size: 8pt; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); text-align: left; padding: 2mm 3mm; background: #fafbfc; border-bottom: 1px solid var(--line); }
+  table td { padding: 2.5mm 3mm; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .pill { display: inline-block; padding: 0.7mm 2.5mm; border-radius: 10px; font-size: 8pt; font-weight: 700; color: #fff; min-width: 12mm; text-align: center; }
+  .pill-ok { background: var(--ok); }
+  .pill-warn { background: var(--warn); }
+  .pill-caution { background: var(--caution); }
+  .pill-muted { background: var(--muted); }
+  .callout { background: #fdf6ec; border: 1px solid #f1d59b; border-radius: 3px; padding: 4mm 5mm; font-size: 10pt; margin: 3mm 0; }
+  .kicker { font-size: 12pt; font-weight: 600; margin: 6mm 0 2mm; color: var(--ink); }
+  .pagebreak { page-break-before: always; }
+  footer { margin-top: 8mm; padding-top: 4mm; border-top: 1px solid var(--line); font-size: 8.5pt; color: var(--muted); }
+  .sources { font-size: 8.8pt; color: var(--muted); line-height: 1.45; }
+  .sources a { color: var(--muted); text-decoration: none; border-bottom: 1px dotted var(--muted); }
+  .verified-facts { background: #fafbfc; border: 1px solid var(--line); border-left: 3px solid var(--ok); border-radius: 3px; padding: 4mm 5mm; margin: 4mm 0; font-size: 9pt; break-inside: avoid; }
+  .verified-facts h3 { margin: 0 0 2mm; font-size: 10pt; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 700; }
+  .verified-facts ul { margin: 0; padding-left: 0; list-style: none; }
+  .verified-facts li { margin-bottom: 1.5mm; padding-left: 6mm; position: relative; }
+  .verified-facts li::before { content: "✓"; position: absolute; left: 0; color: var(--ok); font-weight: 700; }
+  .verified-facts li.discrepancy::before { content: "⚠"; color: var(--warn); }
+  .verified-facts li.unverified::before { content: "?"; color: var(--caution); }
+  .verified-facts .src { color: var(--muted); font-size: 8.5pt; }
+</style>
+</head>
+<body>
+
+<!-- CONTENT: COVER -->
+<div class="cover">
+  <div class="eyebrow">SEO / GEO Audit · Confidential</div>
+  <h1>{{SUBJECT}} — Audit Brief</h1>
+  <div class="subtitle">{{SUBTITLE_ONE_LINE}}</div>
+  <div class="meta">
+    <span><strong>Subject:</strong> {{SUBJECT_URL}}</span>
+    <span><strong>Scope:</strong> {{SCOPE}}</span>
+    <span><strong>Prepared:</strong> {{TODAY}}</span>
+  </div>
+</div>
+
+<!-- CONTENT: STAT ROW -->
+<div class="stat-row">
+  <div class="stat"><div class="label">Lighthouse SEO</div><div class="value">{{LH_SEO}}</div><div class="note">{{LH_NOTE}}</div></div>
+  <div class="stat"><div class="label">CWV pass rate</div><div class="value">{{CWV_RATE}}</div><div class="note">{{CWV_NOTE}}</div></div>
+  <div class="stat"><div class="label">Indexed pages</div><div class="value">{{INDEXED}}</div><div class="note">{{INDEXED_NOTE}}</div></div>
+  <div class="stat"><div class="label">AI visibility</div><div class="value">{{AI_VIS}}</div><div class="note">{{AI_VIS_NOTE}}</div></div>
+</div>
+
+<!-- CONTENT: VERDICT -->
+<div class="verdict">
+  <span class="tag">SEO / GEO Read · {{VERDICT_LABEL}}</span>
+  <p style="margin:0;">{{VERDICT_PARAGRAPH}}</p>
+</div>
+
+<!-- CONTENT: WHAT'S WORKING (4 cards) -->
+<h2>What's Working</h2>
+<div class="grid">
+  <div class="card good"><h3>{{GOOD1_TITLE}}</h3><p>{{GOOD1_BODY}}</p></div>
+  <div class="card good"><h3>{{GOOD2_TITLE}}</h3><p>{{GOOD2_BODY}}</p></div>
+  <div class="card good"><h3>{{GOOD3_TITLE}}</h3><p>{{GOOD3_BODY}}</p></div>
+  <div class="card good"><h3>{{GOOD4_TITLE}}</h3><p>{{GOOD4_BODY}}</p></div>
+</div>
+
+<!-- CONTENT: CRITICAL FIXES (5-7 cards) -->
+<h2>Critical Fixes</h2>
+<div class="card risk"><h3>1. {{FIX1_TITLE}}</h3><p>{{FIX1_BODY}}</p></div>
+<div class="card risk"><h3>2. {{FIX2_TITLE}}</h3><p>{{FIX2_BODY}}</p></div>
+<div class="card risk"><h3>3. {{FIX3_TITLE}}</h3><p>{{FIX3_BODY}}</p></div>
+<div class="card risk"><h3>4. {{FIX4_TITLE}}</h3><p>{{FIX4_BODY}}</p></div>
+<div class="card risk"><h3>5. {{FIX5_TITLE}}</h3><p>{{FIX5_BODY}}</p></div>
+
+<!-- CONTENT: AI VISIBILITY SCORECARD -->
+<h2>AI Visibility Scorecard</h2>
+<p style="font-size:9.5pt;color:var(--muted);">Brand citation rate across {{N_PROMPTS}} commercial prompts × {{N_PROVIDERS}} providers.</p>
+<table>
+  <thead>
+    <tr><th>Provider</th><th>Queries</th><th>Brand mentioned</th><th>Domain cited</th><th>Dominant sentiment</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>OpenAI (ChatGPT)</td><td>{{OAI_Q}}</td><td>{{OAI_BRAND}}</td><td>{{OAI_DOMAIN}}</td><td><span class="pill pill-{{OAI_SENT_CLASS}}">{{OAI_SENT}}</span></td></tr>
+    <tr><td>Anthropic (Claude)</td><td>{{ANT_Q}}</td><td>{{ANT_BRAND}}</td><td>{{ANT_DOMAIN}}</td><td><span class="pill pill-{{ANT_SENT_CLASS}}">{{ANT_SENT}}</span></td></tr>
+    <tr><td>Perplexity</td><td>{{PPX_Q}}</td><td>{{PPX_BRAND}}</td><td>{{PPX_DOMAIN}}</td><td><span class="pill pill-{{PPX_SENT_CLASS}}">{{PPX_SENT}}</span></td></tr>
+    <tr><td>Gemini</td><td>{{GEM_Q}}</td><td>{{GEM_BRAND}}</td><td>{{GEM_DOMAIN}}</td><td><span class="pill pill-{{GEM_SENT_CLASS}}">{{GEM_SENT}}</span></td></tr>
+  </tbody>
+</table>
+
+<!-- CONTENT: COMPETITOR BENCHMARK -->
+<h2>Competitor Benchmark — Citation Rate</h2>
+<table>
+  <thead><tr><th>Competitor</th><th>Citation rate</th><th>Your gap</th><th>Top-citing platform</th></tr></thead>
+  <tbody>
+    <tr><td>{{COMP1}}</td><td>{{COMP1_RATE}}</td><td>{{COMP1_GAP}}</td><td>{{COMP1_WHERE}}</td></tr>
+    <tr><td>{{COMP2}}</td><td>{{COMP2_RATE}}</td><td>{{COMP2_GAP}}</td><td>{{COMP2_WHERE}}</td></tr>
+    <tr><td>{{COMP3}}</td><td>{{COMP3_RATE}}</td><td>{{COMP3_GAP}}</td><td>{{COMP3_WHERE}}</td></tr>
+  </tbody>
+</table>
+
+<!-- CONTENT: SCHEMA AUDIT -->
+<h2>Structured Data Audit</h2>
+<table>
+  <thead><tr><th>Page type</th><th>Schema present</th><th>Valid</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>{{SCHEMA1_PAGE}}</td><td>{{SCHEMA1_TYPE}}</td><td><span class="pill pill-{{SCHEMA1_VALID_CLASS}}">{{SCHEMA1_VALID}}</span></td><td>{{SCHEMA1_NOTE}}</td></tr>
+    <tr><td>{{SCHEMA2_PAGE}}</td><td>{{SCHEMA2_TYPE}}</td><td><span class="pill pill-{{SCHEMA2_VALID_CLASS}}">{{SCHEMA2_VALID}}</span></td><td>{{SCHEMA2_NOTE}}</td></tr>
+    <tr><td>{{SCHEMA3_PAGE}}</td><td>{{SCHEMA3_TYPE}}</td><td><span class="pill pill-{{SCHEMA3_VALID_CLASS}}">{{SCHEMA3_VALID}}</span></td><td>{{SCHEMA3_NOTE}}</td></tr>
+  </tbody>
+</table>
+
+<div class="pagebreak"></div>
+
+<!-- CONTENT: TOP-10 PRIORITIZED FIXES -->
+<h2>Top-10 Prioritized Fixes</h2>
+<table>
+  <thead><tr><th style="width:30%">Fix</th><th style="width:14%">Effort</th><th style="width:14%">Impact</th><th style="width:14%">Category</th><th>Why it matters</th></tr></thead>
+  <tbody>
+    <tr><td>{{FIX_A_TITLE}}</td><td>{{FIX_A_EFFORT}}</td><td>{{FIX_A_IMPACT}}</td><td>{{FIX_A_CAT}}</td><td>{{FIX_A_WHY}}</td></tr>
+    <tr><td>{{FIX_B_TITLE}}</td><td>{{FIX_B_EFFORT}}</td><td>{{FIX_B_IMPACT}}</td><td>{{FIX_B_CAT}}</td><td>{{FIX_B_WHY}}</td></tr>
+    <tr><td>{{FIX_C_TITLE}}</td><td>{{FIX_C_EFFORT}}</td><td>{{FIX_C_IMPACT}}</td><td>{{FIX_C_CAT}}</td><td>{{FIX_C_WHY}}</td></tr>
+    <tr><td>{{FIX_D_TITLE}}</td><td>{{FIX_D_EFFORT}}</td><td>{{FIX_D_IMPACT}}</td><td>{{FIX_D_CAT}}</td><td>{{FIX_D_WHY}}</td></tr>
+    <tr><td>{{FIX_E_TITLE}}</td><td>{{FIX_E_EFFORT}}</td><td>{{FIX_E_IMPACT}}</td><td>{{FIX_E_CAT}}</td><td>{{FIX_E_WHY}}</td></tr>
+    <tr><td>{{FIX_F_TITLE}}</td><td>{{FIX_F_EFFORT}}</td><td>{{FIX_F_IMPACT}}</td><td>{{FIX_F_CAT}}</td><td>{{FIX_F_WHY}}</td></tr>
+    <tr><td>{{FIX_G_TITLE}}</td><td>{{FIX_G_EFFORT}}</td><td>{{FIX_G_IMPACT}}</td><td>{{FIX_G_CAT}}</td><td>{{FIX_G_WHY}}</td></tr>
+    <tr><td>{{FIX_H_TITLE}}</td><td>{{FIX_H_EFFORT}}</td><td>{{FIX_H_IMPACT}}</td><td>{{FIX_H_CAT}}</td><td>{{FIX_H_WHY}}</td></tr>
+    <tr><td>{{FIX_I_TITLE}}</td><td>{{FIX_I_EFFORT}}</td><td>{{FIX_I_IMPACT}}</td><td>{{FIX_I_CAT}}</td><td>{{FIX_I_WHY}}</td></tr>
+    <tr><td>{{FIX_J_TITLE}}</td><td>{{FIX_J_EFFORT}}</td><td>{{FIX_J_IMPACT}}</td><td>{{FIX_J_CAT}}</td><td>{{FIX_J_WHY}}</td></tr>
+  </tbody>
+</table>
+
+<!-- CONTENT: VERIFIED FACTS -->
+<div class="verified-facts">
+  <h3>Verified Facts — Zero-Trust Audit</h3>
+  <ul>
+    <li>{{FACT1}} <span class="src">({{FACT1_SOURCE}})</span></li>
+    <li class="discrepancy">{{FACT2}} <span class="src">({{FACT2_SOURCE}})</span></li>
+    <li class="unverified">{{FACT3}} <span class="src">({{FACT3_SOURCE}})</span></li>
+  </ul>
+</div>
+
+<!-- CONTENT: ONE-SENTENCE SUMMARY -->
+<h2>One Sentence Summary</h2>
+<p class="kicker">{{ONE_SENTENCE}}</p>
+
+<!-- CONTENT: SOURCES -->
+<h2>Sources</h2>
+<div class="sources">
+  <ul>
+    <li><a href="{{SRC1_URL}}">{{SRC1_TITLE}}</a></li>
+    <li><a href="{{SRC2_URL}}">{{SRC2_TITLE}}</a></li>
+    <li><a href="{{SRC3_URL}}">{{SRC3_TITLE}}</a></li>
+  </ul>
+</div>
+
+<footer>
+  Independent SEO / GEO audit. Citation data captured via scripts/ai-citation-test.mjs on {{TODAY}}. AI-model responses are non-deterministic; delta-compare across runs.
+</footer>
+
+</body>
+</html>
