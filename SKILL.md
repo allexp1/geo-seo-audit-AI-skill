@@ -4,7 +4,7 @@ description: Audit a website for traditional SEO (titles, meta, headings, Open G
 user-invocable: true
 args:
   - name: subcommand
-    description: One of audit, crawlers, citability, schema, llmstxt, onpage, technical, keywords, readability, performance, agent, ora, pdf, report, refresh. Defaults to audit.
+    description: One of audit, crawlers, citability, schema, llmstxt, onpage, technical, keywords, readability, performance, agent, ora, ai-citations, pdf, report, refresh. Defaults to audit.
     required: false
   - name: url
     description: The URL to analyze (https://example.com). Not needed for `refresh`.
@@ -61,6 +61,7 @@ Run when the staleness check triggers, or on demand via the `refresh` subcommand
 | `readability` | Flesch-Kincaid, Gunning Fog, AI citation readability |
 | `performance` | Google Lighthouse score + Core Web Vitals via PageSpeed Insights (current thresholds in KNOWLEDGE.md) |
 | `pdf` | Generate a professional PDF audit report with score gauges, agent-readiness section, ora.ai section, competitive analysis, strategic roadmap, and 90-day timeline. Accepts `--keywords kw1,kw2,...` |
+| `ai-citations` | Query ChatGPT / Claude / Perplexity / Gemini with a list of commercial prompts and measure how often the brand is cited. Delta-compares across runs. See `references/ai-visibility-testing.md` |
 | `refresh` | Run the Refresh Protocol now (no URL needed) |
 
 ## How to run
@@ -83,6 +84,16 @@ python3 scripts/readability.py <url>
 python3 scripts/performance.py <url> [mobile|desktop]
 python3 scripts/report.py <url>     # runs all of the above and emits markdown
 python3 scripts/generate_pdf.py <url> [output.pdf] [--keywords kw1,kw2,kw3]
+
+# AI-visibility measurement (Node.js; queries ChatGPT/Claude/Perplexity/Gemini)
+node scripts/ai-citation-test.mjs \
+  --brand="BrandName" \
+  --domain="example.com" \
+  --competitors="Comp1,Comp2,Comp3" \
+  --prompts=prompts.txt
+
+# Render an HTML audit brief to PDF via headless Chrome
+scripts/render-audit-pdf.sh audit.html audit.pdf
 ```
 
 ## ora.ai integration
@@ -117,6 +128,10 @@ python3 scripts/generate_pdf.py https://example.com report.pdf --keywords "whole
 | `SERPAPI_KEY` | Real Google rankings (free 100/month at serpapi.com) |
 | `GOOGLE_CSE_KEY` + `GOOGLE_CSE_CX` | Google Custom Search API (free 100/day) |
 | `PAGESPEED_API_KEY` | Higher PageSpeed Insights rate limits |
+| `OPENAI_API_KEY` | For `ai-citations` subcommand — ChatGPT queries |
+| `ANTHROPIC_API_KEY` | For `ai-citations` subcommand — Claude queries |
+| `PERPLEXITY_API_KEY` | For `ai-citations` subcommand — Perplexity queries |
+| `GEMINI_API_KEY` | For `ai-citations` subcommand — Gemini queries |
 
 ora.ai needs no key.
 
@@ -158,3 +173,26 @@ If `schema_extract.py` reports missing common types (Organization, LocalBusiness
 - No CRM/prospect tracking. No proposal generation.
 - No data is written outside this skill directory. Scripts only read.
 - Never triggers an ora.ai scan without the user's explicit go-ahead (`--scan`).
+
+## References — deep-dive documentation
+
+For topics beyond what the Python audit scripts cover, consult the `references/` directory. These are methodology guides Claude should read when the user asks about the specific topic:
+
+| File | When to read |
+|------|--------------|
+| `references/ai-visibility-testing.md` | User asks about AI citations, AEO measurement, or `ai-citations` subcommand |
+| `references/llms-txt-guide.md` | User asks about `llms.txt`, `ai.txt`, AI crawler directives |
+| `references/local-seo.md` | User's site has a physical location, service area, or GBP |
+| `references/knowledge-graph.md` | User asks about Wikipedia, Wikidata, knowledge panel, entity optimization |
+| `references/programmatic-seo.md` | User has directory/marketplace/listing content, thousands of similar pages |
+| `references/topical-authority.md` | User asks about content clusters, pillar pages, internal linking |
+| `references/keyword-research.md` | User asks about keyword strategy, intent classification, 2026 methodology |
+| `references/content-decay.md` | User's content is losing rankings; refresh / prune strategy |
+| `references/serp-features.md` | User asks about AI Overviews, featured snippets, PAA, image pack, review stars |
+| `references/link-building.md` | User asks about backlinks, digital PR, HARO, authority |
+| `references/eeat-implementation.md` | User asks about E-E-A-T, author bylines, YMYL content |
+| `references/spa-js-rendering.md` | User has React/Next.js/Vue/SPA; SSR vs SSG vs ISR vs CSR |
+| `references/json-ld-templates.md` | Deep JSON-LD reference; 20+ schema types. Complements `schema/*.json` |
+| `references/pdf-template.html` | HTML template for PDF audit briefs (for `render-audit-pdf.sh`) |
+
+If a reference guide contradicts KNOWLEDGE.md, KNOWLEDGE.md wins — it is the refreshed source of current facts; references are methodology depth.

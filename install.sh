@@ -15,6 +15,7 @@ cp "${SRC}/SKILL.md" "${DEST}/SKILL.md"
 cp "${SRC}/sources.md" "${DEST}/sources.md"
 cp -R "${SRC}/scripts" "${DEST}/scripts"
 cp -R "${SRC}/schema" "${DEST}/schema"
+cp -R "${SRC}/references" "${DEST}/references"
 
 # Knowledge base: seed on first install, but never clobber a copy that the
 # installed skill's Refresh Protocol has been keeping current.
