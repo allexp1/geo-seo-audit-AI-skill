@@ -30,6 +30,20 @@ COMMON_TYPES = {
     "SoftwareApplication": ["name", "applicationCategory"],
 }
 
+# Google retired the rich results for these types (they still parse as data,
+# but produce no visual result — flag so owners don't maintain dead markup).
+DEPRECATED_RICH_RESULTS = {
+    "HowTo": "HowTo rich results removed Sept 2023.",
+    "FAQPage": ("FAQ rich results fully removed May 2026. The markup still helps "
+                "AI systems parse Q&A content — keep it for GEO, not for rich results."),
+    "ClaimReview": "Claim Review rich results retired June 2025.",
+    "SpecialAnnouncement": "Special Announcement rich results retired June 2025.",
+    "Vehicle": "Vehicle Listing rich results retired June 2025.",
+    "Car": "Vehicle Listing rich results retired June 2025.",
+    "EmployerAggregateRating": "Estimated Salary rich results retired June 2025.",
+    "Occupation": "Estimated Salary rich results retired June 2025.",
+}
+
 
 def types_of(obj) -> list[str]:
     if not isinstance(obj, dict):
@@ -99,11 +113,25 @@ def analyze(url: str) -> dict:
         blocks.append(entry)
 
     missing_common = [t for t in COMMON_TYPES if t not in found_types]
+    deprecated_found = [
+        {"type": t, "note": DEPRECATED_RICH_RESULTS[t]}
+        for t in sorted(found_types) if t in DEPRECATED_RICH_RESULTS
+    ]
+
+    # sameAs on Organization is the entity-linking signal AI engines use to
+    # tie the site to its Wikipedia/Wikidata/social identities.
+    entity_linked = False
+    org_check = field_reports.get("Organization")
+    if org_check is not None:
+        entity_linked = "sameAs" not in org_check.get("missing", [])
+
     return {
         "url": url,
         "block_count": len(blocks),
         "types_found": sorted(found_types),
         "common_types_missing": missing_common,
+        "deprecated_rich_results": deprecated_found,
+        "organization_entity_linked": entity_linked,
         "field_checks": field_reports,
         "blocks": blocks,
     }

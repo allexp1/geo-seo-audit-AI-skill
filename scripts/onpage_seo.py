@@ -57,6 +57,14 @@ def analyze(url: str) -> dict:
     robots_meta = soup.find("meta", attrs={"name": "robots"})
     robots_content = robots_meta["content"].lower() if robots_meta and robots_meta.get("content") else ""
 
+    # Snippet controls: these also govern what Google AI Overviews / AI Mode may
+    # quote from the page (Google's AI-optimization guide, 2026).
+    snippet_controls = {
+        "nosnippet": "nosnippet" in robots_content,
+        "max_snippet": next((p.strip() for p in robots_content.split(",") if "max-snippet" in p), ""),
+        "data_nosnippet_blocks": len(soup.find_all(attrs={"data-nosnippet": True})),
+    }
+
     # Canonical
     canonical_tag = soup.find("link", rel="canonical")
     canonical = canonical_tag["href"].strip() if canonical_tag and canonical_tag.get("href") else ""
@@ -134,21 +142,24 @@ def analyze(url: str) -> dict:
     score = 0
     notes: list[str] = []
 
-    # Title (15 pts)
+    # Title (15 pts) — 2026 guidance: 50-60 chars with entity names
     if 30 <= len(title) <= 60:
         score += 15
+        if len(title) < 50:
+            notes.append(f"title {len(title)} chars is fine; 50-60 with entity names is ideal")
     elif title:
         score += 8
-        notes.append(f"title length {len(title)} (target 30-60)")
+        notes.append(f"title length {len(title)} (target 50-60)")
     else:
         notes.append("missing <title>")
 
-    # Meta description (15 pts)
+    # Meta description (15 pts) — doubles as AI Overview citation-card text;
+    # 2026 guidance: 140-160 chars, answer-aligned
     if 120 <= len(meta_desc) <= 160:
         score += 15
     elif meta_desc:
         score += 7
-        notes.append(f"meta description {len(meta_desc)} chars (target 120-160)")
+        notes.append(f"meta description {len(meta_desc)} chars (target 140-160, answer-aligned)")
     else:
         notes.append("missing meta description")
 
@@ -222,6 +233,7 @@ def analyze(url: str) -> dict:
         "title": {"value": title, "length": len(title)},
         "meta_description": {"value": meta_desc, "length": len(meta_desc)},
         "robots_meta": robots_content,
+        "snippet_controls": snippet_controls,
         "canonical": canonical,
         "headings": {"h1": h1, "h2_count": len(h2), "h3_count": len(h3)},
         "open_graph": og,

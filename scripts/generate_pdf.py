@@ -36,6 +36,9 @@ from keyword_extract import extract as extract_keywords
 from keyword_rank import check_rankings
 from readability import analyze as analyze_readability
 from performance import analyze as analyze_performance
+from agent_readiness import analyze as analyze_agent
+from ora_score import get_score as get_ora_score, domain_of
+import scoring
 
 # ---------------------------------------------------------------------------
 # Color palette
@@ -213,9 +216,11 @@ def build_pdf(url: str, output: str, custom_keywords: list[str] | None = None):
     keywords = extract_keywords(url)
     read = analyze_readability(url)
     perf = analyze_performance(url)
+    agent = analyze_agent(url)
 
     parsed = urlparse(page["final_url"])
     domain = parsed.netloc.lstrip("www.")
+    ora = get_ora_score(domain_of(page["final_url"]))
 
     # Keyword rankings — use custom keywords if provided, otherwise auto-extract
     if custom_keywords:
@@ -228,47 +233,21 @@ def build_pdf(url: str, output: str, custom_keywords: list[str] | None = None):
 
     print("Generating PDF...")
 
-    # Scores
-    s_crawl = 100.0 if not crawlers.get("robots_present") else (1 - crawlers.get("summary", {}).get("blocked", 0) / max(1, crawlers.get("summary", {}).get("total", 1))) * 100
-    s_cite = float(cite.get("avg_score", 0)) if cite.get("passage_count", 0) > 0 else 0.0
+    # Scores (shared module — same numbers as the markdown report)
+    geo, geo_parts = scoring.geo_score(crawlers, cite, schema, llms)
+    seo, seo_parts = scoring.seo_score(onpage, technical)
+    agent_val = agent.get("score") if not agent.get("error") else None
+    composite = scoring.composite_score(geo, seo, agent_val)
     found_types = schema.get("types_found", [])
-    hv = len(set(found_types) & {"Organization", "WebSite", "Article", "BlogPosting", "Product", "LocalBusiness", "FAQPage", "BreadcrumbList"})
-    s_schema = min(100.0, 20 + hv * 15) if found_types else 0.0
-    s_llms = 100.0 if llms.get("present") and llms.get("analysis", {}).get("valid_shape") else (60.0 if llms.get("present") else 0.0)
-    geo = 0.35 * s_crawl + 0.35 * s_cite + 0.20 * s_schema + 0.10 * s_llms
-
-    s_onpage = float(onpage.get("score", 0))
-    # Technical score
-    tech_score = 0
-    if technical.get("https", {}).get("http_to_https_redirect"):
-        tech_score += 20
     sec_count = technical.get("response", {}).get("security_headers_present", 0)
-    tech_score += min(25, sec_count * 5)
-    if technical.get("response", {}).get("content_encoding") in ("gzip", "br", "deflate", "zstd"):
-        tech_score += 10
     elapsed = technical.get("response", {}).get("elapsed_ms", 0)
-    if elapsed and elapsed < 800:
-        tech_score += 15
-    elif elapsed and elapsed < 2000:
-        tech_score += 8
-    cache = technical.get("response", {}).get("cache_headers", {})
-    if cache.get("Cache-Control") or cache.get("ETag"):
-        tech_score += 10
-    sm = technical.get("sitemap", {})
-    if sm.get("present"):
-        tech_score += 15
-        if sm.get("referenced_in_robots"):
-            tech_score += 5
-    s_tech = float(min(100, tech_score))
-    seo = 0.5 * s_onpage + 0.5 * s_tech
-    composite = (geo + seo) / 2
 
     styles = get_styles()
     story = []
 
     # ===== COVER / HEADER =====
     story.append(Spacer(1, 10 * mm))
-    story.append(Paragraph(f"GEO + SEO Audit Report", styles["title"]))
+    story.append(Paragraph(f"GEO + SEO + Agent Audit Report", styles["title"]))
     story.append(Paragraph(f"{parsed.netloc}", ParagraphStyle("Domain", parent=styles["title"],
                            fontSize=18, textColor=CLR_HIGHLIGHT)))
     story.append(Spacer(1, 2 * mm))
@@ -280,12 +259,14 @@ def build_pdf(url: str, output: str, custom_keywords: list[str] | None = None):
     story.append(Spacer(1, 6 * mm))
 
     # ===== SCORE GAUGES =====
-    gauge_table = Table([
-        [make_score_gauge(composite, "Composite"),
-         make_score_gauge(geo, "GEO"),
-         make_score_gauge(seo, "SEO"),
-         make_score_gauge(perf.get("lighthouse_score", 0) if perf.get("lighthouse_score") is not None else 0, "Lighthouse")]
-    ], colWidths=[120, 120, 120, 120])
+    gauges = [make_score_gauge(composite, "Composite"),
+              make_score_gauge(geo, "GEO"),
+              make_score_gauge(seo, "SEO")]
+    if agent_val is not None:
+        gauges.append(make_score_gauge(agent_val, "Agent"))
+    gauges.append(make_score_gauge(
+        perf.get("lighthouse_score", 0) if perf.get("lighthouse_score") is not None else 0, "Lighthouse"))
+    gauge_table = Table([gauges], colWidths=[480 / len(gauges)] * len(gauges))
     gauge_table.setStyle(TableStyle([
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -296,34 +277,60 @@ def build_pdf(url: str, output: str, custom_keywords: list[str] | None = None):
     # Score summary table
     score_data = [
         ["", "Score", "Rating", "Components"],
-        ["Composite", f"{composite:.0f}/100", score_label(composite), ""],
-        ["GEO (AI Search)", f"{geo:.0f}/100", score_label(geo), "Crawlers, Citability, Schema, llms.txt"],
+        ["Composite", f"{composite:.0f}/100", score_label(composite), "Mean of GEO, SEO, Agent"],
+        ["GEO (AI Search)", f"{geo:.0f}/100", score_label(geo), "Crawlers, Citability, Schema, llms.txt, Answer-first"],
         ["SEO (Traditional)", f"{seo:.0f}/100", score_label(seo), "On-Page, Technical"],
     ]
+    if agent_val is not None:
+        score_data.append(["Agent (AI-agent usability)", f"{agent_val:.0f}/100", score_label(agent_val),
+                           "Parseability, Interactions, Interfaces, Access"])
     if perf.get("lighthouse_score") is not None:
         score_data.append(["Performance", f"{perf['lighthouse_score']}/100",
-                          score_label(perf["lighthouse_score"]), "Lighthouse Mobile"])
-    story.append(styled_table(score_data, col_widths=[100, 60, 60, 260], right_align_cols=[1]))
+                          score_label(perf["lighthouse_score"]), "Lighthouse Mobile (not in composite)"])
+    if ora.get("score") is not None:
+        score_data.append(["ora.ai Agent Readiness", f"{ora['score']}/{ora.get('max_score', 100)}",
+                           f"Grade {ora.get('grade', '?')}", "External score (not in composite)"])
+    story.append(styled_table(score_data, col_widths=[130, 60, 60, 230], right_align_cols=[1]))
 
     # ===== GEO BREAKDOWN =====
     story.append(Paragraph("GEO Breakdown", styles["h1"]))
-    geo_data = [
-        ["Category", "Weight", "Score", "Notes"],
-        ["AI Crawler Access", "35%", f"{s_crawl:.0f}", f"{crawlers.get('summary', {}).get('blocked', 0)}/{crawlers.get('summary', {}).get('total', 22)} bots blocked"],
-        ["Citability", "35%", f"{s_cite:.0f}", f"Avg across {cite.get('passage_count', 0)} passages"],
-        ["Schema Coverage", "20%", f"{s_schema:.0f}", f"{len(found_types)} type(s), {hv} high-value"],
-        ["llms.txt", "10%", f"{s_llms:.0f}", "Present" if llms.get("present") else "Not present"],
-    ]
+    geo_labels = {"crawlers": "AI Crawler Access", "citability": "Citability",
+                  "schema": "Schema Coverage", "llms": "llms.txt",
+                  "answer_first": "Answer-First Structure"}
+    geo_data = [["Category", "Weight", "Score", "Notes"]]
+    for key, label in geo_labels.items():
+        s, n = geo_parts[key]
+        geo_data.append([label, f"{scoring.GEO_WEIGHTS[key]:.0%}", f"{s:.0f}", n])
     story.append(styled_table(geo_data, col_widths=[110, 50, 50, 270], right_align_cols=[1, 2]))
 
     # ===== SEO BREAKDOWN =====
     story.append(Paragraph("SEO Breakdown", styles["h1"]))
     seo_data = [
         ["Category", "Weight", "Score", "Notes"],
-        ["On-Page SEO", "50%", f"{s_onpage:.0f}", "; ".join(onpage.get("notes", [])[:2]) or "All basics present"],
-        ["Technical SEO", "50%", f"{s_tech:.0f}", f"{sec_count}/6 security headers, {elapsed}ms response"],
+        ["On-Page SEO", "50%", f"{seo_parts['onpage'][0]:.0f}", "; ".join(onpage.get("notes", [])[:2]) or "All basics present"],
+        ["Technical SEO", "50%", f"{seo_parts['technical'][0]:.0f}", f"{sec_count}/6 security headers, {elapsed}ms response"],
     ]
     story.append(styled_table(seo_data, col_widths=[110, 50, 50, 270], right_align_cols=[1, 2]))
+
+    # ===== AGENT BREAKDOWN =====
+    if agent_val is not None:
+        story.append(Paragraph("AI Agent Readiness Breakdown", styles["h1"]))
+        cats = agent["categories"]
+        cp, ir = cats["content_parseability"], cats["interaction_readiness"]
+        ai_if, ac = cats["agent_interfaces"], cats["access"]
+        agent_data = [
+            ["Category", "Weight", "Score", "Key numbers"],
+            ["Content parseability", "35%", f"{cp['score']:.0f}",
+             f"{cp['word_count_no_js']} words without JS, {cp['text_to_markup_pct']}% text ratio"],
+            ["Interaction readiness", "25%", f"{ir['score']:.0f}",
+             f"{ir['unlabeled_fields']}/{ir['form_fields']} fields unlabeled, "
+             f"{ir['without_accessible_name']}/{ir['buttons_links']} controls unnamed"],
+            ["Agent interfaces", "25%", f"{ai_if['score']:.0f}",
+             "Found: " + (", ".join(f["name"] for f in ai_if["found"]) or "none")],
+            ["Access", "15%", f"{ac['score']:.0f}",
+             f"Bot wall: {yes_no(ac['bot_wall_detected'])} (bot UA {ac['bot_ua_status']}, browser {ac['browser_ua_status']})"],
+        ]
+        story.append(styled_table(agent_data, col_widths=[110, 50, 50, 270], right_align_cols=[1, 2]))
 
     # ===== ON-PAGE SEO DETAIL =====
     story.append(Paragraph("On-Page SEO Details", styles["h1"]))
@@ -446,9 +453,19 @@ def build_pdf(url: str, output: str, custom_keywords: list[str] | None = None):
         f"<b>{len(blocked_bots)}</b> blocked  |  "
         f"<b>{len(allowed_explicit)}</b> explicitly allowed",
         styles["body"]))
+    if crawlers.get("core_search_warning"):
+        story.append(Paragraph(f"<b>WARNING:</b> {crawlers['core_search_warning']}", styles["body"]))
+    if crawlers.get("content_signals"):
+        story.append(Paragraph(
+            f"<b>Content-Signal:</b> {'; '.join(crawlers['content_signals'])}", styles["body_small"]))
+    for st in crawlers.get("stale_tokens", []):
+        story.append(Paragraph(
+            f"Stale robots.txt token <b>{st['token']}</b> — {st['note']}", styles["body_small"]))
+    if crawlers.get("cloudflare", {}).get("behind_cloudflare"):
+        story.append(Paragraph(crawlers["cloudflare"].get("note", ""), styles["body_small"]))
     story.append(Spacer(1, 2 * mm))
 
-    bot_data = [["Bot", "Vendor", "Status"]]
+    bot_data = [["Bot", "Vendor", "Category", "Status"]]
     for b in crawlers.get("bots", []):
         if b.get("blocked_root"):
             status = "BLOCKED"
@@ -456,8 +473,8 @@ def build_pdf(url: str, output: str, custom_keywords: list[str] | None = None):
             status = "Explicitly allowed"
         else:
             status = "Allowed (wildcard)"
-        bot_data.append([b["token"], b["vendor"], status])
-    story.append(styled_table(bot_data, col_widths=[130, 100, 250]))
+        bot_data.append([b["token"], b["vendor"], b.get("category", ""), status])
+    story.append(styled_table(bot_data, col_widths=[130, 100, 80, 170]))
 
     # ===== CITABILITY =====
     story.append(PageBreak())
@@ -494,6 +511,8 @@ def build_pdf(url: str, output: str, custom_keywords: list[str] | None = None):
             story.append(Paragraph(
                 f"Missing high-value types: <b>{', '.join(schema['common_types_missing'])}</b>",
                 styles["body"]))
+        for dep in schema.get("deprecated_rich_results", []):
+            story.append(Paragraph(f"<b>{dep['type']}</b>: {dep['note']}", styles["body_small"]))
 
     # ===== LLMS.TXT =====
     story.append(Paragraph("llms.txt", styles["h1"]))
@@ -501,10 +520,65 @@ def build_pdf(url: str, output: str, custom_keywords: list[str] | None = None):
         a = llms["analysis"]
         story.append(Paragraph(
             f"Present ({a['size']} bytes)  |  H1: {yes_no(a['starts_with_h1'])}  |  "
-            f"Sections: {a['section_count']}  |  Links: {a['link_count']}",
+            f"Sections: {a['section_count']}  |  Links: {a['link_count']}  |  "
+            f"llms-full.txt: {yes_no(llms.get('llms_full_present'))}",
             styles["body"]))
     else:
-        story.append(Paragraph("Not present. Recommended to publish /llms.txt.", styles["body"]))
+        story.append(Paragraph("Not present. Recommended as an agent-readiness signal.", styles["body"]))
+    story.append(Paragraph(llms.get("value_note", ""), styles["body_small"]))
+
+    # ===== AI AGENT READINESS =====
+    if agent_val is not None:
+        story.append(PageBreak())
+        story.append(Paragraph("AI Agent Readiness — What To Do", styles["h1"]))
+        story.append(HRFlowable(width="100%", thickness=1, color=CLR_ACCENT))
+        story.append(Spacer(1, 3 * mm))
+        story.append(Paragraph(
+            "AI agents (ChatGPT/Atlas, Claude, Perplexity Comet, browsing and shopping assistants) "
+            "increasingly read, navigate, and transact with websites on behalf of users. These "
+            "recommendations mirror Google's Lighthouse Agentic Browsing audit and industry "
+            "agent-readiness checks — they make the site legible and operable for agents.",
+            styles["body"]))
+        story.append(Spacer(1, 2 * mm))
+        ai_if = agent["categories"]["agent_interfaces"]
+        if ai_if["found"]:
+            story.append(Paragraph("Agent interfaces detected", styles["h2"]))
+            for f in ai_if["found"]:
+                story.append(Paragraph(f"• <b>{f['path']}</b> — {f['name']}", styles["bullet"]))
+            story.append(Spacer(1, 2 * mm))
+        story.append(Paragraph("Owner action list", styles["h2"]))
+        prio_map = {1: "P1 — Critical", 2: "P2 — Important", 3: "P3 — Nice to have"}
+        for rcm in agent.get("recommendations", []):
+            story.append(Paragraph(
+                f"<b>[{prio_map.get(rcm['priority'], rcm['priority'])}]</b> ({rcm['category']}) {rcm['text']}",
+                styles["body_small"]))
+            story.append(Spacer(1, 1 * mm))
+
+    # ===== ORA.AI EXTERNAL SCORE =====
+    if ora.get("score") is not None:
+        story.append(Paragraph("ora.ai Agent Readiness (external)", styles["h1"]))
+        story.append(Paragraph(
+            f"Score: <b>{ora['score']}/{ora.get('max_score', 100)}</b> — grade <b>{ora.get('grade')}</b>  |  "
+            f"Scanned: {str(ora.get('scanned_at', ''))[:10]}  |  "
+            f"Full report: {ora.get('report_url')}",
+            styles["body"]))
+        ora_data = [["Layer", "Score", "Failing checks"]]
+        for layer in ora.get("layers", []):
+            ora_data.append([layer["name"], f"{layer['score']}/{layer['max_score']}",
+                             f"{layer['checks_failing']}/{layer['checks_total']}"])
+        story.append(styled_table(ora_data, col_widths=[160, 100, 220], right_align_cols=[1, 2]))
+        if ora.get("top_recommendations"):
+            story.append(Spacer(1, 2 * mm))
+            story.append(Paragraph("Top ora.ai recommendations (by estimated score gain)", styles["h2"]))
+            for rcm in ora["top_recommendations"][:5]:
+                gain = f" (+{rcm['est_score_gain']} pts)" if rcm.get("est_score_gain") else ""
+                story.append(Paragraph(
+                    f"• <b>{rcm['check']}</b>{gain}: {rcm['recommendation']}",
+                    styles["body_small"]))
+                story.append(Spacer(1, 1 * mm))
+    elif ora.get("scanned") is False:
+        story.append(Paragraph("ora.ai Agent Readiness (external)", styles["h1"]))
+        story.append(Paragraph(ora.get("note", "Domain not scanned by ora.ai yet."), styles["body_small"]))
 
     # ===== COMPETITIVE ANALYSIS =====
     if rankings and rankings.get("results"):
@@ -674,17 +748,33 @@ def build_pdf(url: str, output: str, custom_keywords: list[str] | None = None):
 
     # GEO Actions
     geo_actions: list[tuple[int, str]] = []
-    if blocked_bots:
-        names = ", ".join(b["token"] for b in blocked_bots[:5])
-        geo_actions.append((1, f"AI bots blocked: {names}. Review robots.txt."))
+    if crawlers.get("core_search_blocked"):
+        geo_actions.append((1, crawlers["core_search_warning"]))
+    vis_blocked = [b for b in blocked_bots if b.get("category") in ("search", "user-fetch")]
+    if vis_blocked:
+        names = ", ".join(b["token"] for b in vis_blocked[:5])
+        geo_actions.append((1, f"Search/user-fetch AI bots blocked: {names} — these remove the site from AI answers."))
+    train_blocked = [b for b in blocked_bots if b.get("category") == "training"]
+    if train_blocked:
+        names = ", ".join(b["token"] for b in train_blocked[:5])
+        geo_actions.append((3, f"Training bots blocked: {names} (policy choice — confirm it is intentional)."))
+    for st in crawlers.get("stale_tokens", []):
+        geo_actions.append((3, f"Remove stale robots.txt token '{st['token']}' — {st['note']}"))
+    if crawlers.get("cloudflare", {}).get("behind_cloudflare"):
+        geo_actions.append((2, "Behind Cloudflare: verify AI Crawl Control — AI training crawlers are blocked by default since July 2025."))
     if cite.get("passage_count", 0) == 0:
         geo_actions.append((1, "No analyzable text passages — add substantive content."))
-    elif cite.get("passages_in_optimal_band", 0) < 3:
-        geo_actions.append((2, "Restructure content into 100-200 word answer blocks."))
+    else:
+        if cite.get("passages_in_optimal_band", 0) < 3:
+            geo_actions.append((2, "Restructure content into 100-200 word answer blocks."))
+        if not cite.get("answer_first"):
+            geo_actions.append((2, "Lead with a direct answer — most AI citations come from the first 30% of page content."))
     if schema["block_count"] == 0:
         geo_actions.append((2, "Add JSON-LD: Organization + WebSite at minimum."))
+    elif not schema.get("organization_entity_linked"):
+        geo_actions.append((2, "Add sameAs links (Wikipedia/Wikidata/LinkedIn) to Organization schema for entity linking."))
     if not llms.get("present"):
-        geo_actions.append((3, "Publish /llms.txt."))
+        geo_actions.append((3, "Publish /llms.txt (agent-readiness signal; not used by Google Search)."))
     elif llms.get("analysis", {}).get("link_count", 0) == 0:
         geo_actions.append((2, "llms.txt has no links — add markdown links to key pages."))
     if not read.get("error") and not read.get("ai_citation_friendly"):
@@ -712,6 +802,23 @@ def build_pdf(url: str, output: str, custom_keywords: list[str] | None = None):
             story.append(Spacer(1, 1 * mm))
     else:
         story.append(Paragraph("No GEO issues found.", styles["body"]))
+
+    story.append(Spacer(1, 4 * mm))
+    story.append(Paragraph("AI Agent Actions", styles["h2"]))
+    agent_actions = agent.get("recommendations", []) if agent_val is not None else []
+    if agent_actions:
+        for rcm in agent_actions:
+            prio = rcm["priority"] if rcm["priority"] in prio_styles else 3
+            story.append(Paragraph(
+                f"<b>[{prio_labels[prio]}]</b> ({rcm['category']}) {rcm['text']}", prio_styles[prio]))
+            story.append(Spacer(1, 1 * mm))
+    else:
+        story.append(Paragraph("No agent-readiness issues found.", styles["body"]))
+    if ora.get("top_recommendations"):
+        for rcm in ora["top_recommendations"][:3]:
+            gain = f" (+{rcm['est_score_gain']} ora pts)" if rcm.get("est_score_gain") else ""
+            story.append(Paragraph(f"<b>[ora.ai]</b> {rcm['recommendation']}{gain}", prio_styles[2]))
+            story.append(Spacer(1, 1 * mm))
 
     # ===== STRATEGIC ROADMAP =====
     if rankings and rankings.get("results"):
@@ -846,10 +953,10 @@ def build_pdf(url: str, output: str, custom_keywords: list[str] | None = None):
              "Every page should open with a 134-167 word paragraph that directly answers "
              "the keyword's implicit question. No preamble, no \"In today's world...\" — just the answer. "
              "This is the passage AI assistants quote."),
-            ("Add FAQPage schema everywhere",
-             "Each product/landing page should have 5-8 FAQ questions in JSON-LD. "
-             "AI assistants often pull directly from FAQ schema because the Q&A format "
-             "matches how users ask questions."),
+            ("Add Q&A blocks with FAQPage schema",
+             "Each product/landing page should answer 5-8 real questions in visible Q&A blocks "
+             "backed by FAQPage JSON-LD. Google removed FAQ rich results in May 2026, but the "
+             "Q&A format is still what AI assistants quote, and the markup helps them parse it."),
             ("Publish /llms.txt" if not llms.get("present") else "Improve /llms.txt",
              "This file tells AI crawlers what your site is about and where to find key pages. "
              + ("Create it with links to all product pages, API docs, and key content." if not llms.get("present")
@@ -908,8 +1015,10 @@ def build_pdf(url: str, output: str, custom_keywords: list[str] | None = None):
         if hard_kws:
             timeline_data.append(["4-8", "Write in-depth guides for competitive keywords", "Build topical authority"])
 
-        # Week 5-8: Schema + GEO
-        timeline_data.append(["5-8", "Add FAQPage schema to all product pages", "GEO +15-20 pts"])
+        # Week 5-8: Schema + GEO + agent interfaces
+        timeline_data.append(["5-8", "Add Q&A blocks + FAQPage schema to all product pages", "GEO +15-20 pts"])
+        if agent_val is not None and agent_val < 70:
+            timeline_data.append(["6-10", "Agent readiness: label forms, publish llms.txt, expose MCP/OpenAPI", "Agent score +20-30 pts"])
 
         # Week 6-10: Readability
         if read.get("flesch_reading_ease", 100) < 50:

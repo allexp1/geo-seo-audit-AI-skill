@@ -36,17 +36,24 @@ ANSWER_HINTS = (
 NOISE_TAGS = {"script", "style", "noscript", "nav", "footer", "aside", "form", "header"}
 
 
-def extract_passages(html: str) -> list[str]:
+def extract_passages(html: str) -> tuple[list[str], dict]:
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup.find_all(NOISE_TAGS):
         tag.decompose()
+
+    # Comparison formats win "best X / X vs Y" queries in AI answers
+    formats = {
+        "tables": len(soup.find_all("table")),
+        "ordered_lists": len(soup.find_all("ol")),
+        "unordered_lists": len(soup.find_all("ul")),
+    }
 
     candidates: list[str] = []
     for tag in soup.find_all(["p", "li"]):
         text = " ".join(tag.get_text(" ", strip=True).split())
         if len(text.split()) >= 30:
             candidates.append(text)
-    return candidates
+    return candidates, formats
 
 
 def score_passage(text: str) -> dict:
@@ -96,9 +103,8 @@ def score_passage(text: str) -> dict:
 
 def analyze(url: str) -> dict:
     r = requests.get(url, headers={"User-Agent": UA}, timeout=TIMEOUT)
-    passages = extract_passages(r.text)
+    passages, formats = extract_passages(r.text)
     scored = [score_passage(p) for p in passages]
-    scored.sort(key=lambda x: x["score"], reverse=True)
 
     total = len(scored)
     if total == 0:
@@ -110,6 +116,14 @@ def analyze(url: str) -> dict:
             "note": "No paragraphs of 30+ words found. Page may be JS-rendered or content-thin.",
         }
 
+    # Answer-first: ~44% of LLM citations come from the first 30% of page
+    # content, so a strong passage needs to appear early.
+    early_cutoff = max(1, total * 3 // 10)
+    early = scored[:early_cutoff]
+    answer_first = any(s["score"] >= 60 for s in early)
+    early_avg = sum(s["score"] for s in early) / len(early)
+
+    scored.sort(key=lambda x: x["score"], reverse=True)
     avg = sum(s["score"] for s in scored) / total
     in_band = sum(1 for s in scored if 100 <= s["words"] <= 200)
     return {
@@ -117,6 +131,15 @@ def analyze(url: str) -> dict:
         "passage_count": total,
         "passages_in_optimal_band": in_band,
         "avg_score": round(avg, 1),
+        "answer_first": answer_first,
+        "early_content_avg_score": round(early_avg, 1),
+        "answer_first_note": (
+            "A citable passage appears in the first 30% of content."
+            if answer_first else
+            "No strong passage in the first 30% of content — lead with a direct, "
+            "self-contained answer; most AI citations come from early page content."
+        ),
+        "comparison_formats": formats,
         "top": scored[:5],
         "weakest": scored[-3:],
     }

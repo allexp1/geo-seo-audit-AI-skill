@@ -72,6 +72,11 @@ def fetch_with_timing(url: str) -> dict:
     security = {h: headers.get(h, "") for h in SECURITY_HEADERS}
     cache = {h: headers.get(h, "") for h in CACHE_HEADERS}
 
+    # Cloudflare fronting matters for GEO: since July 2025 it blocks AI
+    # training crawlers by default, regardless of what robots.txt says.
+    behind_cloudflare = ("cloudflare" in headers.get("Server", "").lower()
+                         or "cf-ray" in {k.lower() for k in headers})
+
     return {
         "final_url": r.url,
         "status": r.status_code,
@@ -81,6 +86,7 @@ def fetch_with_timing(url: str) -> dict:
         "content_type": headers.get("Content-Type", ""),
         "server": headers.get("Server", ""),
         "x_powered_by": headers.get("X-Powered-By", ""),
+        "behind_cloudflare": behind_cloudflare,
         "security_headers": security,
         "security_headers_present": sum(1 for v in security.values() if v),
         "cache_headers": cache,

@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""Check for /llms.txt and report basic conformance to the proposed standard.
+"""Check for /llms.txt (and /llms-full.txt) and report conformance to the spec.
 
 Spec: https://llmstxt.org — a markdown file at site root that summarizes a
 site for LLMs. Should start with an H1 (the site name), an optional blockquote
-summary, then markdown sections of links.
+summary, then markdown sections of links. /llms-full.txt is the community
+convention for a single file with full page content inlined.
+
+Honest value note (2026): Google says Search does NOT consume llms.txt, and
+no major AI vendor has committed to it. It IS checked by Lighthouse's
+Agentic Browsing audit and fetched by coding/IDE agents (Cursor, Claude Code,
+Copilot) on docs sites. Treat it as a low-weight agent-readiness signal.
 
 If the file is absent, emits a generated template based on the homepage.
 """
@@ -93,6 +99,22 @@ def check(url: str) -> dict:
     else:
         out["present"] = False
         out["suggested_template"] = generate_template(f"{parsed.scheme}://{parsed.netloc}/")
+
+    # Companion file with full content inlined (community convention)
+    try:
+        rf = requests.get(f"{parsed.scheme}://{parsed.netloc}/llms-full.txt",
+                          headers={"User-Agent": UA}, timeout=TIMEOUT)
+        out["llms_full_present"] = (rf.status_code == 200
+                                    and "html" not in rf.headers.get("content-type", "").lower())
+        if out["llms_full_present"]:
+            out["llms_full_size"] = len(rf.text)
+    except Exception:
+        out["llms_full_present"] = False
+
+    out["value_note"] = (
+        "llms.txt is not consumed by Google Search; it is checked by Lighthouse's "
+        "Agentic Browsing audit and fetched by coding/IDE agents. Low-weight signal."
+    )
     return out
 
 

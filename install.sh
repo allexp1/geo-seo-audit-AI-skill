@@ -12,8 +12,18 @@ echo "  dest:   ${DEST}"
 
 mkdir -p "${DEST}"
 cp "${SRC}/SKILL.md" "${DEST}/SKILL.md"
+cp "${SRC}/sources.md" "${DEST}/sources.md"
 cp -R "${SRC}/scripts" "${DEST}/scripts"
 cp -R "${SRC}/schema" "${DEST}/schema"
+
+# Knowledge base: seed on first install, but never clobber a copy that the
+# installed skill's Refresh Protocol has been keeping current.
+if [ ! -f "${DEST}/KNOWLEDGE.md" ]; then
+  cp "${SRC}/KNOWLEDGE.md" "${DEST}/KNOWLEDGE.md"
+  cp "${SRC}/CHANGELOG.md" "${DEST}/CHANGELOG.md"
+else
+  echo "Kept existing KNOWLEDGE.md/CHANGELOG.md (refreshed copies may be newer than the repo's)."
+fi
 
 if ! python3 -c "import requests, bs4" 2>/dev/null; then
   echo

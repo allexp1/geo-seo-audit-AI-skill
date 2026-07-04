@@ -6,9 +6,12 @@ Uses the public PSI API — no API key required for basic use (rate-limited to
 
 Returns:
   - Lighthouse performance score (0-100)
-  - Core Web Vitals: LCP, FID/INP, CLS, FCP, TTFB
+  - Core Web Vitals: LCP, INP, CLS (plus FCP, TTFB; FID retired Sept 2024)
   - Top Lighthouse opportunities (what to fix)
   - Strategy: mobile (default) or desktop
+
+Thresholds (unchanged as of mid-2026, per web.dev — ignore blog claims of
+2026 changes): LCP <= 2.5 s, INP <= 200 ms, CLS <= 0.1.
 """
 from __future__ import annotations
 
@@ -60,7 +63,7 @@ def analyze(url: str, strategy: str = "mobile") -> dict:
 
     mapping = {
         "LARGEST_CONTENTFUL_PAINT_MS": ("lcp_ms", "Largest Contentful Paint"),
-        "FIRST_INPUT_DELAY_MS": ("fid_ms", "First Input Delay"),
+        "FIRST_INPUT_DELAY_MS": ("fid_ms", "First Input Delay (legacy, retired 2024)"),
         "INTERACTION_TO_NEXT_PAINT": ("inp_ms", "Interaction to Next Paint"),
         "CUMULATIVE_LAYOUT_SHIFT_SCORE": ("cls", "Cumulative Layout Shift"),
         "FIRST_CONTENTFUL_PAINT_MS": ("fcp_ms", "First Contentful Paint"),
