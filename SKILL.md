@@ -154,6 +154,18 @@ but NOT folded in (external scale, may be missing for unscanned domains).
 - **AGENT** — content parseability 35%, interaction readiness 25%,
   agent interfaces 25%, access/bot-walls 15%.
 
+Alongside the AGENT score, `agent_readiness.py` reports the **AgentReady v2.0
+checklist** (agentready.org, the open standard by ora.ai with Vercel, Stripe,
+Google and others) under `agentready`: every rule a static fetch can verify,
+under its stable id (AR-FIND-01 ...), its level (MUST / SHOULD / MAY) and
+`pass` / `fail` / `review`. Lead the agent section of the report with any
+failed MUST (`AR-FIND-01` not blocking agents, `AR-READ-01` answer in the
+initial HTML, `AR-READ-02` honest 404s); those are the two changes that broke
+agents in the studies. `AR-ACT-*` rows marked `*` apply only when agents are
+meant to act on the product, so `review` there is not a failure: ask whether
+the site is a product agents should operate before recommending an MCP server.
+The checklist does not change the 0-100 score.
+
 Weights are methodology and change only by human edit here and in
 `scripts/scoring.py`. The facts behind the checks change via KNOWLEDGE.md.
 

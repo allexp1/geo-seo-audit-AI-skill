@@ -19,6 +19,8 @@ never modifies this file.
 - https://web.dev/articles/vitals + https://developer.chrome.com/docs/crux/release-notes — Core Web Vitals metrics and thresholds
 - https://developer.chrome.com/docs/lighthouse/agentic-browsing/scoring — Lighthouse Agentic Browsing checks
 - https://developer.chrome.com/docs/ai/webmcp — WebMCP status, origin trial, API shape
+- https://webmachinelearning.github.io/webmcp/ — WebMCP W3C draft (API object and method names)
+- https://agentready.org + https://github.com/agentready-org/standard (spec/spec.md, CHANGELOG.md) — AgentReady rule ids, levels, retired rules
 - https://blog.cloudflare.com/ (tags: ai-crawl-control, bots) + https://developers.cloudflare.com/ai-crawl-control/ — default AI blocking, Content Signals, Pay Per Use, Web Bot Auth, BotBase
 - https://llmstxt.org — llms.txt spec changes
 - https://ora.ai/docs + https://ora.ai/api/openapi.json + https://ora.ai/methodology — ora.ai API endpoints, rate limits, layers, grade scale

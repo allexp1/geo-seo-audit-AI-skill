@@ -376,6 +376,19 @@ def build_report(url: str) -> str:
             md.append("")
         if cats["interaction_readiness"].get("webmcp"):
             md.append(f"- {cats['interaction_readiness']['webmcp_note']}\n")
+        ar = agent.get("agentready")
+        if ar:
+            s = ar["summary"]
+            md.append(f"**{s['spec']} checklist** — MUST failed: "
+                      f"{', '.join(s['must_failed']) or 'none'}; SHOULD failed: "
+                      f"{', '.join(s['should_failed']) or 'none'}\n")
+            md.append("| Rule | Level | Result | Evidence |")
+            md.append("|---|---|---|---|")
+            mark = {"pass": "✅ pass", "fail": "❌ fail", "review": "➖ review"}
+            for c in ar["checks"]:
+                md.append(f"| {c['id']} | {c['level']} | {mark.get(c['status'], c['status'])} | "
+                          f"{c['evidence'].replace('|', '/')} |")
+            md.append(f"\n_{s['note']}._\n")
         md.append("**What the owner should do for AI agents** (see prioritized list below):\n")
         for r in agent.get("recommendations", [])[:8]:
             md.append(f"- **P{r['priority']}** [{r['category']}] {r['text']}")

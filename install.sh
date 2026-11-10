@@ -13,9 +13,13 @@ echo "  dest:   ${DEST}"
 mkdir -p "${DEST}"
 cp "${SRC}/SKILL.md" "${DEST}/SKILL.md"
 cp "${SRC}/sources.md" "${DEST}/sources.md"
-cp -R "${SRC}/scripts" "${DEST}/scripts"
-cp -R "${SRC}/schema" "${DEST}/schema"
-cp -R "${SRC}/references" "${DEST}/references"
+# Copy folder contents ("dir/."), so a re-install refreshes in place instead of nesting
+# a second copy inside the existing folder (BSD cp -R behaviour).
+for d in scripts schema references; do
+  mkdir -p "${DEST}/${d}"
+  cp -R "${SRC}/${d}/." "${DEST}/${d}/"
+done
+rm -rf "${DEST}/scripts/__pycache__"
 
 # Knowledge base: seed on first install, but never clobber a copy that the
 # installed skill's Refresh Protocol has been keeping current.

@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-07-04
+last_updated: 2026-11-11
 review_interval_days: 14
 ---
 
@@ -15,11 +15,11 @@ Current checkable robots.txt tokens (mirrored in `scripts/crawler_check.py:AI_BO
 
 | Token | Vendor | Category | Notes |
 |---|---|---|---|
-| GPTBot | OpenAI | training | v1.2; IP list at openai.com/gptbot.json |
+| GPTBot | OpenAI | training | v1.4 (2026-08); IPs published per-bot as JSON |
 | OAI-SearchBot | OpenAI | search | ChatGPT search index |
 | ChatGPT-User | OpenAI | user-fetch | robots.txt "may not apply" |
-| OAI-AdsBot | OpenAI | ads | NEW 2025-26; validates ChatGPT ad landing pages |
-| ClaudeBot | Anthropic | training | |
+| OAI-AdsBot | OpenAI | ads | validates ChatGPT ad landing pages; obeys robots.txt |
+| ClaudeBot | Anthropic | training | IPs at claude.com/crawling/bots.json |
 | Claude-SearchBot | Anthropic | search | |
 | Claude-User | Anthropic | user-fetch | |
 | PerplexityBot | Perplexity | search | documented circumventing robots.txt (Cloudflare, Aug 2025) |
@@ -54,10 +54,18 @@ Copilot. Blocking either removes the site from those AI surfaces.
 - Since July 2025 Cloudflare blocks AI **training** crawlers by default for new
   zones (~20% of the web is behind Cloudflare) — robots.txt can look permissive
   while the WAF 403s bots.
-- From **2026-09-15**: mixed-use crawlers blocked by default on ad-monetized
-  pages; Training + Agent categories blocked by default for new/free zones;
-  Search stays allowed. "Pay Per Use" (HTTP 402) launching with Ceramic.ai and
-  You.com. BotBase directory of verified bots.
+- Three independent categories — **Search / Agent / Training** — are
+  configurable by ALL customers (Free plan included) as of the 2026-07-01
+  changelog. Per category: block on all pages, block only on ad-displaying
+  pages, or do not block.
+- From **2026-09-15**, *new domains only* get updated defaults: **Training and
+  Agent blocked on pages that display ads**; **Search stays allowed** on all
+  pages. Multi-purpose Search+Training crawlers are caught by the Training
+  rule. Existing customers can opt out before that date. (Earlier wording here
+  — "Training + Agent blocked outright for new/free zones" — was too broad.)
+- "Pay Per Use" (HTTP 402) launching with Ceramic.ai and You.com. BotBase
+  directory of verified bots. "Redirects for AI Training" enforces canonical
+  content against training fetches.
 - **Content Signals Policy** (Sept 2025): `Content-Signal: search=yes,
   ai-train=no, ai-input=yes` lines inside robots.txt; live on 3.8M+ domains;
   not yet an IETF standard. Parsed by `crawler_check.py`.
@@ -104,8 +112,11 @@ Event. Organization `sameAs` → entity linking (Wikipedia/Wikidata/social).
 Deprecated rich results (markup still parses; no visual result — mirrored in
 `scripts/schema_extract.py:DEPRECATED_RICH_RESULTS`):
 - HowTo — dead since Sept 2023
-- FAQ — removed May 2026 (Rich Results Test support dropped June 2026);
-  FAQPage markup still aids AI parsing of Q&A content
+- FAQ — removed 2026-05-07 (Rich Results Test dropped June 2026; **Search
+  Console API support removed August 2026**); FAQPage markup still aids AI
+  parsing of Q&A content and Google says there is no need to rip it out
+- Practice Problems — no longer shown; Search Console reporting, Rich Results
+  Test and Search-appearance filter removed January 2026
 - June 2025 batch: Book Actions, Course Info, Claim Review, Estimated Salary,
   Learning Video, Special Announcement, Vehicle Listing
 
@@ -122,8 +133,16 @@ and are contradicted by web.dev/CrUX release notes — do not encode them.
   ~June 2026): accessibility-tree quality (programmatic names, valid roles),
   CLS, llms.txt presence, WebMCP form annotations. Google's framing: the
   agent-friendly checklist "is the accessibility audit restated".
-- **WebMCP**: W3C Draft CG Report Feb 2026; `navigator.modelContext`; Chrome
-  origin trial (Chrome 149-156, public since June 2026). Chrome-only so far.
+  **Running the category needs Chrome 150+**, and the WebMCP audits need the
+  origin trial enabled. Google states the category is **informational and
+  unbenchmarked** — pass/fail signals, not a score to rank on. Do not present
+  it as a graded number.
+- **WebMCP**: W3C Draft CG Report; **`document.modelContext`** (`registerTool`,
+  `getTools`, `executeTool`; verified in the draft 2026-11-11; early demos used
+  `navigator.modelContext`, so detect both); Chrome
+  origin trial runs **Chrome 149 through 156** (blink-dev approval 2026-05-18) (also behind
+  `chrome://flags/#enable-webmcp-testing`). Chrome-only so far; Gemini in
+  Chrome is slated to consume WebMCP tools.
 - **NLWeb** (Microsoft, Build 2025): natural-language endpoint (`/ask`) built
   on a site's Schema.org/RSS data; every NLWeb instance is automatically an
   MCP server (`/mcp`). Adopters: Shopify, Tripadvisor, Eventbrite, O'Reilly.
@@ -137,18 +156,57 @@ and are contradicted by web.dev/CrUX release notes — do not encode them.
   Instant Checkout into Apps), Google AP2/UCP, x402. For e-commerce: clean
   product feed + Product schema with price/availability.
 
+- **AgentReady v2.0** (agentready.org, October 2026; spec at
+  github.com/agentready-org/standard `spec/spec.md`): open spec by ora.ai with
+  Vercel, Stripe, Auth0, Mintlify, Tavily, Google, Elementor, Netlify. Built on
+  250k+ traced agent runs. Stages find / read / act, stable ids:
+  - MUST: `AR-FIND-01` don't block agents (robots.txt or WAF; throttle with
+    429 + Retry-After, not a challenge), `AR-READ-01` answer in the initial
+    HTML, `AR-READ-02` honest status codes (no soft 404), `AR-ACT-10` an MCP
+    server or a CLI *only* for products agents should act on.
+  - SHOULD: `AR-FIND-02` first-party docs page, `AR-FIND-03` sitemap in
+    robots.txt, `AR-READ-03` homepage raw HTML with real links, `AR-READ-04`
+    docs answer user tasks, `AR-READ-05` fenced + language-tagged code,
+    `AR-READ-06` discovery files *linked* (86-100% of visits come via links),
+    `AR-READ-07` llms.txt, `AR-READ-08` JSON-LD on the homepage (facts also in
+    visible text), `AR-READ-11` pricing as text on a first-party page,
+    `AR-ACT-01` agent-completable auth (RFC 8414 / 9728), `AR-ACT-02` OpenAPI,
+    `AR-ACT-03` MCP over Streamable HTTP at `/mcp` (product MCP gated with
+    OAuth, `/.well-known/oauth-protected-resource`), `AR-ACT-06` SDKs + CLI,
+    `AR-ACT-07` WebMCP.
+  - MAY: `AR-FIND-04` AI Catalog at `/.well-known/ai-catalog.json` +
+    `<link rel="ai-catalog">`, `AR-READ-09` markdown mirror
+    (`<link rel="alternate" type="text/markdown">`), `AR-ACT-04` MCP server
+    card (SEP-2127, path still moving), `AR-ACT-05` MCP Apps view, `AR-ACT-08`
+    agent payments (x402/MPP, UCP/ACP, Stripe Link), `AR-ACT-09` NLWeb `/ask`.
+  - Retired: `AR-READ-10` (AGENTS.md / SKILLS.md).
+  - Key numbers: 6% of ~127k scanned sites grade B or better, average 43
+    (Oct 2026); agents answered 3.7x as often with none of the asked facts
+    when they could not read the site; pricing answers 60% accurate from the
+    site vs 37% from elsewhere.
+
 ## ora.ai API
 
-- Free, keyless read API; ~10 scans/min/IP; `Retry-After` on 429.
+- Free, keyless read API. Anonymous limits: **10 req/min/IP burst** on the scan
+  family, **30 scans / rolling 24 h / IP**, **6 force (cache-bypassing) scans /
+  24 h**. Journey endpoints: 20/min burst, 100 runs/domain/24 h, 200 runs/IP/24 h.
+  ora-issued API keys bypass the scan-family limits. `Retry-After` on 429.
 - `GET https://ora.ai/api/score/{domain}` → cached ScanResult (404 = never
   scanned). `POST /api/scan` runs a fresh scan and **publishes the domain on
-  the public leaderboard** (that's why `--scan` is opt-in).
-- Response shape: `score`, `maxScore`, `grade`, `layers[]` (Discovery,
-  Identity, Access, Payments, Experience) each with `checks[]` carrying
-  `status/score/maxScore/details/recommendation/estScoreGain`.
-- Grades: A+ 95-100, A 86-94, B 70-85, C 48-69, D 28-47, F 0-27.
+  the public leaderboard** (that's why `--scan` is opt-in). Also
+  `GET /api/scan/stream` (SSE progress), `POST /api/scan/checks` (subset),
+  `GET /api/checks` (check catalog), `POST /api/feedback/check`.
+- Newer endpoint families (not used by this skill): `/api/discover`,
+  `/api/journey/{runs,intents,agents}`, `/api/ard/{search,agents}`.
+- **Audit scoring layers (v1.20.x) = Discovery, Accessibility, Usability,
+  Payments** — FOUR layers, 0-100. The five-name *journey* taxonomy
+  (discovery, identity, access, payments, experience) is a **different**
+  model; the spec says the two must never be mapped onto each other.
+- Grade bands (A+ 95-100, A 86-94, B 70-85, C 48-69, D 28-47, F 0-27) were not
+  restated in the v1.20.1 spec fetch — treat as carried-over until confirmed.
 - Also: `GET /api/badge/{domain}` (SVG), MCP server at `https://ora.ai/api/mcp`.
-- OpenAPI spec: https://ora.ai/api/openapi.json (v1.3.3 as of last check).
+- OpenAPI spec: https://ora.ai/api/openapi.json — **v1.20.1** as of 2026-08-24
+  (was v1.3.3). Major/minor bumps changed the response envelope and layer set.
 
 ## On-page guidance numbers
 
@@ -175,7 +233,7 @@ constant as a suggested code change for the user to approve:
 | AI crawler roster | `scripts/crawler_check.py` → `AI_BOTS`, `STALE_TOKENS`, `CORE_SEARCH_BOTS` |
 | Cloudflare and access policy | `scripts/crawler_check.py` → `detect_cloudflare()` note text |
 | Structured data status | `scripts/schema_extract.py` → `COMMON_TYPES`, `DEPRECATED_RICH_RESULTS` |
-| Agent readiness standards | `scripts/agent_readiness.py` → `WELL_KNOWN_PROBES`, WebMCP detection |
+| Agent readiness standards | `scripts/agent_readiness.py` → `WELL_KNOWN_PROBES`, WebMCP detection, `agentready_checks()` (AgentReady rule ids/levels), `mcp_handshake()` |
 | ora.ai API | `scripts/ora_score.py` → `API`, `GRADE_SCALE`, `summarize()` |
 | On-page guidance numbers | `scripts/onpage_seo.py` scoring bands; `scripts/citability.py` / `readability.py` heuristics |
 | Core Web Vitals | `scripts/performance.py` docstring/labels |

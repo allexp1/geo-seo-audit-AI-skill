@@ -8,6 +8,9 @@ Mirrors the checkable parts of:
   - Cloudflare Agent Readiness Score: markdown content negotiation,
     /.well-known/api-catalog (RFC 9727), Web Bot Auth key directory
   - ora.ai Identity/Access layers: no-JS content, MCP discovery, OpenAPI
+  - AgentReady v2.0 (agentready.org, Oct 2026): every externally checkable rule is
+    reported under its stable id (AR-FIND-01 ...) with its MUST/SHOULD/MAY level in
+    result["agentready"]. The 0-100 score below is unchanged by that checklist.
 
 Four weighted categories → 0-100 score plus a prioritized recommendation
 list ("what the owner should do to make the site better for AI agents").
@@ -25,7 +28,9 @@ from __future__ import annotations
 import json
 import re
 import sys
-from urllib.parse import urlparse
+import time
+import uuid
+from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -35,6 +40,7 @@ BROWSER_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.3
 BOT_UA = "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; GPTBot/1.2; +https://openai.com/gptbot"
 TIMEOUT = 15
 MAX_PROBE_BYTES = 65536
+MCP_DEADLINE = 10  # seconds, total, for the MCP initialize handshake
 
 CHALLENGE_MARKERS = ("just a moment", "cf-chl", "captcha", "attention required",
                      "access denied", "verify you are human", "enable javascript and cookies")
@@ -48,6 +54,8 @@ WELL_KNOWN_PROBES = [
      "Full-content companion to llms.txt for one-shot ingestion."),
     ("/.well-known/mcp.json", "MCP discovery manifest", "json",
      "Lets agents discover the site's MCP server and tools."),
+    ("/.well-known/ai-catalog.json", "AI Catalog (AgentReady AR-FIND-04)", "json",
+     "One manifest listing every agent-facing resource: MCP server card, OpenAPI, llms.txt, skills."),
     ("/.well-known/api-catalog", "API catalog (RFC 9727)", "any",
      "Machine-readable index of the site's APIs."),
     ("/.well-known/http-message-signatures-directory", "Web Bot Auth keys", "any",
@@ -83,6 +91,54 @@ def probe(origin: str, path: str, expect: str) -> bool:
     return True
 
 
+def mcp_handshake(url: str) -> bool:
+    """Streamable-HTTP MCP servers may answer a plain GET with a docs page, so send the
+    read-only `initialize` request. A JSON-RPC result, or a 401 with WWW-Authenticate
+    (an OAuth-gated server), proves a real MCP endpoint."""
+    body = {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                       "clientInfo": {"name": "geo-audit", "version": "1"}}}
+    try:
+        resp = requests.post(url, json=body, timeout=TIMEOUT, stream=True, headers={
+            "User-Agent": BROWSER_UA, "Accept": "application/json, text/event-stream"})
+    except Exception:
+        return False
+    try:
+        return _mcp_reply(resp, url)
+    finally:
+        resp.close()
+
+
+def _mcp_reply(resp, url: str) -> bool:
+    if resp.status_code == 401:
+        # An MCP server gated by OAuth answers with a Bearer challenge naming its protected-resource
+        # metadata (RFC 9728), or publishes that metadata. A site-wide Basic login proves nothing.
+        challenge = resp.headers.get("www-authenticate", "").lower()
+        if not challenge.startswith("bearer"):
+            return False
+        if "resource_metadata" in challenge:
+            return True
+        origin = "{0.scheme}://{0.netloc}".format(urlparse(url))
+        prm = fetch(origin + "/.well-known/oauth-protected-resource", BROWSER_UA)
+        return prm is not None and prm.status_code == 200 and "json" in prm.headers.get("content-type", "")
+    if resp.status_code != 200:
+        return False
+    # Read incrementally (an SSE reply may stay open with keepalives); stop at the first
+    # JSON-RPC result, after MAX_PROBE_BYTES, or after MCP_DEADLINE seconds in total.
+    deadline = time.monotonic() + MCP_DEADLINE
+    seen = ""
+    try:
+        for chunk in resp.iter_content(chunk_size=1024, decode_unicode=True):
+            seen += chunk if isinstance(chunk, str) else chunk.decode("utf-8", "ignore")
+            if '"jsonrpc"' in seen and ('"result"' in seen or '"serverInfo"' in seen):
+                return True
+            if len(seen) > MAX_PROBE_BYTES or time.monotonic() > deadline:
+                return False
+    except Exception:
+        pass
+    return '"jsonrpc"' in seen and ('"result"' in seen or '"serverInfo"' in seen)
+
+
 def accessible_name(tag) -> bool:
     if tag.get("aria-label", "").strip() or tag.get("aria-labelledby", "").strip():
         return True
@@ -116,6 +172,7 @@ def analyze(url: str) -> dict:
         return {"url": url, "error": "Could not fetch page."}
     html = r.text
     soup = BeautifulSoup(html, "html.parser")
+    raw_soup = BeautifulSoup(html, "html.parser")
 
     # ---- 1. Content parseability (35%) --------------------------------------
     for t in soup.find_all(["script", "style", "noscript"]):
@@ -189,7 +246,7 @@ def analyze(url: str) -> dict:
 
     clicky_divs = len([d for d in soup.find_all(["div", "span"], onclick=True) if not d.get("role")])
 
-    webmcp = ("navigator.modelcontext" in html.lower()) or bool(
+    webmcp = bool(re.search(r"(?:document|navigator)\.modelcontext", html.lower())) or bool(
         soup.find(attrs={"toolname": True}) or soup.find(attrs={"data-tool-name": True}))
 
     inter_score = 0.0
@@ -217,12 +274,12 @@ def analyze(url: str) -> dict:
             "invisible to the accessibility tree agents navigate. Use <button>/<a> or add roles.")
     if webmcp:
         inter_score += 10
-        webmcp_note = "WebMCP hints detected (navigator.modelContext / tool annotations)."
+        webmcp_note = "WebMCP hints detected (document.modelContext / tool annotations)."
     else:
         webmcp_note = ""
-        rec(3, "interaction", "Consider WebMCP (W3C draft, Chrome origin trial): expose key forms/"
-            "actions as declarative tools via navigator.modelContext so agents can operate them "
-            "reliably.")
+        rec(3, "interaction", "Consider WebMCP (W3C draft, Chrome origin trial): if agents should "
+            "operate this UI, register tools with document.modelContext.registerTool() (feature-detect) "
+            "so agents can act through the signed-in page (AgentReady AR-ACT-07).")
     inter_score = min(100.0, inter_score)
 
     # ---- 3. Agent interfaces (25%) -------------------------------------------
@@ -248,8 +305,11 @@ def analyze(url: str) -> dict:
         ("/mcp", "MCP endpoint (/mcp)", "Live MCP server — agents can call the site's tools."),
     ):
         resp = fetch(origin + path, BROWSER_UA)
-        if resp is not None and resp.status_code in (200, 405) \
-                and "json" in resp.headers.get("content-type", "").lower():
+        hit = resp is not None and resp.status_code in (200, 405) \
+            and "json" in resp.headers.get("content-type", "").lower()
+        if not hit and path == "/mcp":
+            hit = mcp_handshake(origin + path)
+        if hit:
             nlweb = True
             found_interfaces.append({"path": path, "name": name, "note": note})
 
@@ -267,9 +327,10 @@ def analyze(url: str) -> dict:
             "Google Search ignores it, but Lighthouse's agentic audit checks it and coding/IDE "
             "agents fetch it.")
     if not any("MCP" in f["name"] or "NLWeb" in f["name"] for f in found_interfaces):
-        rec(2, "interfaces", "Expose an agent interface: an MCP server advertised at "
-            "/.well-known/mcp.json, or NLWeb (/ask) if you already publish Schema.org data. "
-            "This is what lets assistants act on your site rather than just read it.")
+        rec(3, "interfaces", "Only if agents should complete tasks in the product (not just read "
+            "it): expose an MCP server over Streamable HTTP at /mcp, OAuth-gated for account actions, "
+            "or a CLI (AgentReady AR-ACT-03/AR-ACT-10), and list it in /.well-known/ai-catalog.json. "
+            "Content-heavy sites can use NLWeb (/ask) instead. A read-only site does not need one.")
     if not md_nego:
         rec(3, "interfaces", "Support markdown content negotiation (Accept: text/markdown) or "
             "publish .md twins of key pages — agents parse markdown far more cheaply than HTML.")
@@ -286,7 +347,8 @@ def analyze(url: str) -> dict:
         bot_blocked = True
     else:
         low = bot_resp.text[:4096].lower()
-        if bot_resp.status_code in (401, 403, 429, 503) and browser_ok:
+        honest_429 = bot_resp.status_code == 429 and bool(bot_resp.headers.get("retry-after"))
+        if bot_resp.status_code in (401, 403, 429, 503) and browser_ok and not honest_429:
             bot_blocked = True
         elif any(m in low for m in CHALLENGE_MARKERS) and bot_resp.status_code != 200:
             bot_blocked = True
@@ -311,6 +373,11 @@ def analyze(url: str) -> dict:
             "this page at all. Confirm that is intentional.")
 
     score = round(0.35 * parse_score + 0.25 * inter_score + 0.25 * iface_score + 0.15 * access_score, 1)
+
+    agentready = agentready_checks(
+        r=r, origin=origin, html=html, raw_soup=raw_soup, word_count=word_count,
+        bot_blocked=bot_blocked, bot_status=bot_status, found=found_interfaces,
+        webmcp=webmcp, rec=rec)
     recommendations.sort(key=lambda x: x["priority"])
 
     return {
@@ -333,8 +400,209 @@ def analyze(url: str) -> dict:
                        "bot_wall_detected": bot_blocked, "bot_ua_status": bot_status,
                        "browser_ua_status": r.status_code, "snippet_controls": snippet_controls},
         },
+        "agentready": agentready,
         "recommendations": recommendations,
     }
+
+
+# Hosts where many sites share one origin under different paths (user.github.io/project/),
+# so a project site cannot own the origin root.
+SHARED_PATH_HOSTS = (".github.io", ".gitlab.io")
+
+PRICE_RE = re.compile(r"(?:[$€£₪¥]\s?\d[\d,]*(?:\.\d{2})?|\b\d[\d,]*(?:\.\d{2})?\s?(?:USD|EUR|GBP|ILS)\b"
+                      r"|\bfree\b|\bpricing\b|\bper month\b|/mo\b)", re.I)
+
+
+def agentready_checks(*, r, origin, html, raw_soup, word_count, bot_blocked, bot_status, found,
+                      webmcp, rec) -> dict:
+    """AgentReady v2.0 checklist (https://agentready.org, spec/spec.md). Only rules a static
+    fetch can verify; each row is pass | fail | review (needs a human: e.g. whether agents
+    are meant to act on the product)."""
+    rows: list[dict] = []
+
+    def row(rid: str, level: str, status: str, evidence: str) -> None:
+        rows.append({"id": rid, "level": level, "status": status, "evidence": evidence})
+
+    head = raw_soup.head
+    found_paths = {f["path"] for f in found}
+    final = urlparse(r.url)
+    segments = [s for s in final.path.split("/") if s]
+    shared_host = final.netloc.endswith(SHARED_PATH_HOSTS) and bool(segments)
+    # The homepage is the origin root, or the project root on a shared path host (user.github.io/app/).
+    is_home = not segments or (shared_host and len(segments) == 1 and final.path.endswith("/"))
+    link_header = r.headers.get("link", "")
+
+    # AR-FIND-01 (MUST): robots.txt and the network layer let agents in
+    robots_r = fetch(origin + "/robots.txt", BROWSER_UA)
+    robots = robots_r.text if robots_r is not None and robots_r.status_code == 200 \
+        and "html" not in robots_r.headers.get("content-type", "").lower() else ""
+    groups: dict[str, list[str]] = {}
+    agents: list[str] = []
+    in_rules = False
+    for line in robots.splitlines():
+        line = line.split("#", 1)[0].strip()
+        if ":" not in line:
+            continue
+        key, val = (s.strip() for s in line.split(":", 1))
+        key = key.lower()
+        if key == "user-agent":
+            if in_rules:
+                agents, in_rules = [], False
+            agents.append(val.lower())
+            for a in agents:
+                groups.setdefault(a, [])
+        elif key in ("disallow", "allow"):
+            in_rules = True
+            for a in agents:
+                groups[a].append(f"{key}:{val}")
+    ai_tokens = ("gptbot", "oai-searchbot", "chatgpt-user", "claudebot", "claude-user",
+                 "claude-searchbot", "perplexitybot", "perplexity-user", "google-extended")
+
+    whole_site = {"/", "/*", "/*$", "*"}
+
+    def fully_blocked(rules: list[str]) -> bool:
+        kinds = {r.split(":", 1)[0] for r in rules if r.split(":", 1)[1] in whole_site}
+        return "disallow" in kinds and "allow" not in kinds
+    # A crawler obeys its own group if it has one, else the * group (RFC 9309 2.2.1).
+    blocked_ai = [tok for tok in ai_tokens if fully_blocked(groups.get(tok, groups.get("*", [])))]
+    ok = not blocked_ai and not bot_blocked
+    row("AR-FIND-01", "MUST", "pass" if ok else "fail",
+        f"robots.txt {'present' if robots else 'absent'}; fully disallowed: {', '.join(blocked_ai) or 'none'}; "
+        f"AI-crawler UA got HTTP {bot_status}" + (" (bot wall)" if bot_blocked else ""))
+    if blocked_ai:
+        rec(1, "access", f"robots.txt disallows the whole site for {', '.join(blocked_ai)}. AgentReady "
+            "AR-FIND-01 (MUST): write one policy for all agents (User-agent: *) and block only "
+            "low-value paths.")
+
+    # AR-FIND-03 (SHOULD): sitemap referenced from robots.txt
+    sm_urls = re.findall(r"(?im)^\s*sitemap:\s*(\S+)", robots)
+    sm_r = fetch(sm_urls[0] if sm_urls else origin + "/sitemap.xml", BROWSER_UA)
+    sm_ok = sm_r is not None and sm_r.status_code == 200 and ("<urlset" in sm_r.text[:4000]
+                                                             or "<sitemapindex" in sm_r.text[:4000])
+    row("AR-FIND-03", "SHOULD", "pass" if sm_ok and sm_urls else "fail",
+        f"sitemap {'found' if sm_ok else 'not found'}; referenced from robots.txt: {bool(sm_urls)}")
+    if not (sm_ok and sm_urls):
+        rec(3, "interfaces", "Publish sitemap.xml and reference it from robots.txt (`Sitemap:` line) "
+            "(AgentReady AR-FIND-03).")
+
+    # AR-FIND-04 (MAY): AI Catalog, linked from the homepage head or a Link header
+    catalog = "/.well-known/ai-catalog.json" in found_paths
+    cat_linked = bool(head and head.find("link", rel=lambda v: v and "ai-catalog" in v)) \
+        or "ai-catalog" in link_header
+    row("AR-FIND-04", "MAY", "pass" if catalog and cat_linked else "fail",
+        f"/.well-known/ai-catalog.json: {catalog}; <link rel=\"ai-catalog\"> or Link header: {cat_linked}")
+
+    # AR-READ-01 (MUST): the answer is in the initial HTML
+    row("AR-READ-01", "MUST", "pass" if word_count >= 100 else "fail",
+        f"{word_count} words of visible text without JavaScript")
+
+    # AR-READ-02 (MUST): honest status codes (no soft 404)
+    miss = fetch(urljoin(r.url, "agentready-probe-" + uuid.uuid4().hex[:10]), BROWSER_UA)
+    miss_code = miss.status_code if miss is not None else None
+    row("AR-READ-02", "MUST", "pass" if miss_code in (404, 410) else "fail",
+        f"a made-up path answered HTTP {miss_code}")
+    if miss_code == 200:
+        rec(1, "content", "Missing pages answer HTTP 200 (soft 404): agents cannot tell dead URLs from "
+            "live ones. Return 404 for unknown paths (AgentReady AR-READ-02, MUST). On a single-page "
+            "app, prerender known routes and let the host answer 404 for the rest.")
+
+    # AR-READ-03 (SHOULD): homepage is raw HTML with real links
+    links = [a.get("href", "") for a in raw_soup.find_all("a", href=True)]
+    host = urlparse(r.url).netloc
+    internal = [h for h in links if not re.match(r"(?i)(mailto|tel|javascript|data):|#", h)
+                and urlparse(urljoin(r.url, h)).netloc == host]
+    if is_home:
+        row("AR-READ-03", "SHOULD", "pass" if len(internal) >= 3 else "fail",
+            f"{len(internal)} internal <a href> links in the raw HTML")
+    else:
+        row("AR-READ-03", "SHOULD", "review",
+            f"audited a subpage ({len(internal)} internal links); run on the homepage to check this rule")
+
+    # AR-READ-06 / 07 (SHOULD): llms.txt exists and is linked from content agents visit
+    llms_hrefs = [h for h in links if "llms.txt" in h] + (
+        [l.get("href") for l in head.find_all("link") if "llms" in (l.get("href") or "")] if head else [])
+    llms_linked = bool(llms_hrefs) or "llms.txt" in link_header
+    has_llms = "/llms.txt" in found_paths
+    if not has_llms and llms_hrefs:
+        # A site under a path (user.github.io/app/) publishes llms.txt next to its pages; agents
+        # reach it through the link, so follow it.
+        lr = fetch(urljoin(r.url, llms_hrefs[0]), BROWSER_UA)
+        has_llms = lr is not None and lr.status_code == 200 \
+            and "html" not in lr.headers.get("content-type", "").lower()
+    row("AR-READ-07", "SHOULD", "pass" if has_llms else "fail", f"/llms.txt: {has_llms}")
+    row("AR-READ-06", "SHOULD", "pass" if has_llms and llms_linked else "fail",
+        f"discovery files linked from the page (footer, <link>, Link header): {llms_linked}")
+    if has_llms and not llms_linked:
+        rec(2, "interfaces", "llms.txt exists but nothing links to it. 86-100% of agent visits to "
+            "discovery files come through links, so add it to the footer and as "
+            "<link rel=\"alternate\" type=\"text/plain\" href=\"/llms.txt\"> (AgentReady AR-READ-06).")
+
+    # AR-READ-08 (SHOULD): JSON-LD on the homepage
+    ld = raw_soup.find_all("script", type=lambda v: v and "ld+json" in v.lower())
+    row("AR-READ-08", "SHOULD", "pass" if ld else ("fail" if is_home else "review"),
+        f"{len(ld)} JSON-LD block(s) in the raw HTML" + ("" if is_home else " (subpage; the rule is about the homepage)"))
+    if not ld and is_home:
+        rec(2, "content", "Add JSON-LD to the homepage (Organization / SoftwareApplication / Product) so "
+            "an agent gets key facts in one block, and repeat critical facts in visible text "
+            "(AgentReady AR-READ-08).")
+
+    # AR-READ-09 (MAY): markdown mirror advertised
+    md_link = bool(head and head.find("link", type=lambda v: v and "markdown" in v.lower())) \
+        or "text/markdown" in link_header
+    md_nego = any(f["name"] == "Markdown content negotiation" for f in found)
+    row("AR-READ-09", "MAY", "pass" if md_link or md_nego else "fail",
+        f"<link rel=alternate type=text/markdown>: {md_link}; Accept: text/markdown served: {md_nego}")
+
+    # AR-READ-11 (SHOULD): pricing as text on a first-party page
+    text = raw_soup.get_text(" ", strip=True)
+    price_hits = sorted({m.group(0) for m in PRICE_RE.finditer(text)})[:5]
+    def states_price(words: list[str]) -> bool:
+        return any(not re.fullmatch(r"(?i)free|pricing|per month|/mo", w) for w in words)
+    priced = states_price(price_hits)
+    price_links = []
+    for h in (h for h in links if re.search(r"(?i)pric|plans|tarif", h)):
+        target = urljoin(r.url, h).split("#", 1)[0]
+        if urlparse(target).netloc != final.netloc:
+            continue  # not first-party
+        if target.rstrip("/") == r.url.split("#", 1)[0].rstrip("/"):
+            continue  # an anchor on this same page: its text was checked above
+        pr = fetch(target, BROWSER_UA)
+        if pr is not None and pr.status_code == 200:
+            ptext = BeautifulSoup(pr.text, "html.parser").get_text(" ", strip=True)
+            if states_price([m.group(0) for m in PRICE_RE.finditer(ptext)]):
+                price_links.append(h)
+                break
+    row("AR-READ-11", "SHOULD", "pass" if priced or price_links else "review",
+        f"price words in the text: {price_hits or 'none'}; pricing links: {price_links[:2] or 'none'}")
+    if not (price_hits or price_links):
+        rec(2, "content", "No pricing in the page text. If the product charges (or is free), say so in "
+            "plain HTML text on a first-party page: agents answered pricing correctly 60% of the time "
+            "from the site vs 37% from elsewhere (AgentReady AR-READ-11).")
+
+    # AR-ACT-* (only when agents are meant to act on the product)
+    mcp = "/mcp" in found_paths
+    prm = fetch(origin + "/.well-known/oauth-protected-resource", BROWSER_UA)
+    prm_ok = prm is not None and prm.status_code == 200 and "json" in prm.headers.get("content-type", "")
+    openapi = any(p in found_paths for p in ("/openapi.json", "/api/openapi.json"))
+    row("AR-ACT-02", "SHOULD*", "pass" if openapi else "review", f"OpenAPI found: {openapi}")
+    row("AR-ACT-03", "SHOULD*", "pass" if mcp else "review",
+        f"/mcp endpoint: {mcp}; /.well-known/oauth-protected-resource: {prm_ok}")
+    row("AR-ACT-07", "SHOULD*", "pass" if webmcp else "review", f"WebMCP in the initial HTML: {webmcp}")
+    row("AR-ACT-10", "MUST*", "pass" if mcp else "review",
+        "MCP server found" if mcp else "no MCP server found; a CLI can also satisfy it. Required only "
+        "if agents are expected to complete tasks in the product")
+
+    if shared_host and not robots and not has_llms:
+        rec(2, "interfaces", "The site lives under a path of a shared host, so it cannot publish its own "
+            "/robots.txt, /sitemap.xml, /llms.txt or /.well-known/ files at the origin root. A custom domain "
+            "fixes that.")
+    summary = {
+        "spec": "AgentReady 2.0 (agentready.org, October 2026)",
+        "must_failed": [x["id"] for x in rows if x["level"] == "MUST" and x["status"] == "fail"],
+        "should_failed": [x["id"] for x in rows if x["level"] == "SHOULD" and x["status"] == "fail"],
+        "note": "* = applies only when agents should act on the product, not just read it",
+    }
+    return {"summary": summary, "checks": rows}
 
 
 def main() -> int:
